@@ -4,147 +4,99 @@ import tempfile
 import os
 import base64
 
-def get_image_base64(file):
-    return base64.b64encode(file.read()).decode()
+# Función para cargar imágenes locales (como tu logo del gorila)
+def get_base64_of_bin_file(bin_file):
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
-st.set_page_config(page_title="Generador de Reclamaciones Pro", layout="wide")
+st.set_page_config(page_title="Portal de Reclamaciones", layout="centered")
 
-st.title("📑 Generador de Reportes Profesionales")
+# --- INTERFAZ DE USUARIO ---
+st.markdown("<h2 style='text-align: center; color: #001e4d;'>🚀 Generador de Reportes Premium</h2>", unsafe_allow_html=True)
+uploaded_file = st.file_uploader("Sube la evidencia fotográfica", type=["jpg", "png", "jpeg"])
 
-uploaded_file = st.file_uploader("Sube la imagen de la reclamación", type=["jpg", "png", "jpeg"])
-
-if uploaded_file is not None:
-    img_data = get_image_base64(uploaded_file)
+if uploaded_file:
+    img_evidencia = base64.b64encode(uploaded_file.read()).decode()
     
-    # DATOS EXTRAÍDOS DE LA IMAGEN DE REFERENCIA
-    datos = {
-        "placa": "KCM702",
-        "motor": "2ZR2P51433",
-        "chasis": "9BRKZAAG9P0628447",
-        "marca": "TOYOTA",
-        "modelo": "2023",
-        "clase": "CAMIONETA PASAJ.",
-        "tipo": "COROLLA CROSS SE-G HYBRID TP 1800",
-        "asegurado": "FERNANDEZ LOPEZ, ADRIANA",
-        "cedula": "31629822",
-        "tipo_doc": "CÉDULA DE CIUDADANÍA",
-        "valor_reclamacion": "$ 5.467.111,00",
-        "valor_asegurado": "$ 14.260.000.000,00",
-        "historial": [
-            {"cia": "ALLIANZ", "placa": "KCM702", "desde": "13/06/2025", "hasta": "13/06/2026", "estado": "VIGENTE"},
-            {"cia": "ALLIANZ", "placa": "KCM702", "desde": "13/06/2022", "hasta": "13/06/2025", "estado": "CADUCADA"}
-        ]
-    }
+    # Aquí puedes poner la ruta de tu logo si lo subes a GitHub
+    # logo_base64 = get_base64_of_bin_file("logo_gorila.png") 
 
-    if st.button("GENERAR PDF CON FORMATO COMPLETO"):
+    if st.button("✨ GENERAR REPORTE DE LUJO"):
         html_template = f"""
         <html>
         <head>
             <style>
-                @page {{ size: A4; margin: 0.5cm; }}
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f8f9fa; }}
-                .header {{ background-color: #001e4d; color: white; padding: 25px; text-align: left; }}
-                .yellow-bar {{ background-color: #ffcc00; color: #001e4d; padding: 10px; font-weight: bold; text-align: center; font-size: 13px; }}
+                @page {{ size: A4; margin: 0; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f0f2f5; color: #333; margin: 0; }}
                 
-                .container {{ padding: 20px; }}
-                .section-box {{ background: white; border: 1px solid #ced4da; border-radius: 8px; margin-bottom: 15px; padding: 0; overflow: hidden; }}
-                .section-header {{ background-color: #e9ecef; padding: 8px 15px; font-weight: bold; color: #001e4d; border-bottom: 1px solid #ced4da; font-size: 12px; }}
+                /* Encabezado Elegante */
+                .header {{ background: linear-gradient(135deg, #001e4d 0%, #003380 100%); color: white; padding: 40px 20px; text-align: center; border-bottom: 5px solid #ffcc00; }}
                 
-                .grid-table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
-                .grid-table td {{ padding: 8px; border-bottom: 1px solid #eee; }}
-                .label {{ font-weight: bold; color: #495057; width: 35%; }}
+                .container {{ padding: 30px; }}
                 
-                .historial-table {{ width: 100%; border-collapse: collapse; font-size: 10px; }}
-                .historial-table th {{ background-color: #001e4d; color: white; padding: 8px; text-align: left; }}
-                .historial-table td {{ padding: 8px; border-bottom: 1px solid #dee2e6; }}
+                /* Estilo de Tarjetas Profesionales */
+                .card {{ background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 6px solid #001e4d; }}
+                .card-title {{ font-size: 14px; font-weight: bold; color: #001e4d; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }}
                 
-                .foto-evidencia {{ width: 100%; max-height: 250px; object-fit: contain; background: #eee; border-radius: 5px; }}
-                .valor-red {{ color: #d32f2f; font-weight: bold; font-size: 14px; }}
+                .data-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }}
+                .label {{ font-weight: 600; color: #666; font-size: 12px; }}
+                .value {{ font-weight: 500; color: #111; font-size: 12px; }}
                 
-                .footer-banner {{ background-color: #001e4d; color: white; padding: 15px; position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 11px; }}
+                /* Foto de evidencia con estilo */
+                .foto-frame {{ border-radius: 10px; width: 100%; max-height: 300px; object-fit: cover; border: 2px solid #ddd; }}
+                
+                .highlight-value {{ color: #d32f2f; font-weight: bold; font-size: 16px; }}
+                
+                .footer {{ text-align: center; padding: 20px; font-size: 10px; color: #777; background: #fff; position: absolute; bottom: 0; width: 100%; border-top: 1px solid #eee; }}
             </style>
         </head>
         <body>
             <div class="header">
-                <h1 style="margin:0; font-size: 24px;">¿NECESITAS CONSULTAR RECLAMACIONES?</h1>
-                <p style="margin:5px 0 0 0;">Conoce el historial de tu vehículo al instante</p>
+                <h1 style="margin:0; font-size: 28px;">REPORTE DE RECLAMACIÓN</h1>
+                <p style="opacity: 0.8; margin-top: 5px;">Certificado de Inspección de Historial Vehicular</p>
             </div>
-            <div class="yellow-bar">TU ACCESO A TU INFORMACIÓN, TU RESPONSABILIDAD.</div>
 
             <div class="container">
-                <div style="display: flex; gap: 15px;">
-                    <!-- Columna Izquierda: Imagen -->
-                    <div style="width: 45%;">
-                        <div class="section-box">
-                            <div class="section-header">1 SUBE LA IMAGEN DE LA RECLAMACIÓN</div>
-                            <div style="padding:10px; text-align:center;">
-                                <img src="data:image/png;base64,{img_data}" class="foto-evidencia">
-                            </div>
+                <div style="display: flex; gap: 20px;">
+                    <div style="flex: 1;">
+                        <div class="card">
+                            <div class="card-title">🚗 Detalles del Vehículo</div>
+                            <div class="data-row"><span class="label">PLACA</span><span class="value">KCM702</span></div>
+                            <div class="data-row"><span class="label">MARCA</span><span class="value">TOYOTA</span></div>
+                            <div class="data-row"><span class="label">MODELO</span><span class="value">2023</span></div>
+                            <div class="data-row"><span class="label">TIPO</span><span class="value">COROLLA CROSS SE-G</span></div>
                         </div>
                     </div>
-                    
-                    <!-- Columna Derecha: Datos Vehículo -->
-                    <div style="width: 55%;">
-                        <div class="section-box">
-                            <div class="section-header">2 INFORMACIÓN EXTRAÍDA DE LA IMAGEN</div>
-                            <table class="grid-table">
-                                <tr><td class="label">Placa:</td><td>{datos['placa']}</td></tr>
-                                <tr><td class="label">Motor:</td><td>{datos['motor']}</td></tr>
-                                <tr><td class="label">Marca/Modelo:</td><td>{datos['marca']} / {datos['modelo']}</td></tr>
-                                <tr><td class="label">Tipo:</td><td>{datos['tipo']}</td></tr>
-                            </table>
+                    <div style="flex: 1;">
+                        <div class="card">
+                            <div class="card-title">📸 Evidencia Visual</div>
+                            <img src="data:image/png;base64,{img_evidencia}" class="foto-frame">
                         </div>
                     </div>
                 </div>
 
-                <!-- Datos del Asegurado y Resumen -->
-                <div style="display: flex; gap: 15px;">
-                    <div class="section-box" style="width: 50%;">
-                        <div class="section-header">👤 INFORMACIÓN DEL ASEGURADO</div>
-                        <table class="grid-table">
-                            <tr><td class="label">Nombre:</td><td>{datos['asegurado']}</td></tr>
-                            <tr><td class="label">Cédula:</td><td>{datos['cedula']}</td></tr>
-                        </table>
-                    </div>
-                    <div class="section-box" style="width: 50%;">
-                        <div class="section-header">💰 RESUMEN ECONÓMICO</div>
-                        <table class="grid-table">
-                            <tr><td class="label">Valor Asegurado:</td><td>{datos['valor_asegurado']}</td></tr>
-                            <tr><td class="label">Total Reclamación:</td><td class="valor-red">{datos['valor_reclamacion']}</td></tr>
-                        </table>
-                    </div>
+                <div class="card" style="border-left-color: #ffcc00;">
+                    <div class="card-title">👤 Información del Asegurado</div>
+                    <div class="data-row"><span class="label">NOMBRE COMPLETO</span><span class="value">FERNANDEZ LOPEZ, ADRIANA</span></div>
+                    <div class="data-row"><span class="label">DOCUMENTO</span><span class="value">C.C. 31.629.822</span></div>
                 </div>
 
-                <!-- Tabla de Historial -->
-                <div class="section-box">
-                    <div class="section-header">📋 HISTORIAL DE RECLAMACIONES</div>
-                    <table class="historial-table">
-                        <thead>
-                            <tr>
-                                <th>Compañía</th>
-                                <th>Placa</th>
-                                <th>Desde</th>
-                                <th>Hasta</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {" ".join([f"<tr><td>{h['cia']}</td><td>{h['placa']}</td><td>{h['desde']}</td><td>{h['hasta']}</td><td>{h['estado']}</td></tr>" for h in datos['historial']])}
-                        </tbody>
-                    </table>
+                <div class="card">
+                    <div class="card-title">💰 Resumen Financiero</div>
+                    <div class="data-row"><span class="label">VALOR ASEGURADO</span><span class="value">$ 14.260.000.000,00</span></div>
+                    <div class="data-row"><span class="label">TOTAL RECLAMACIÓN</span><span class="value highlight-value">$ 5.467.111,00</span></div>
                 </div>
             </div>
 
-            <div class="footer-banner">
-                CONSULTA YA Y COMPRA CON CONFIANZA<br>
-                Más transparencia, más seguridad para ti.
+            <div class="footer">
+                Documento generado electrónicamente. La información contenida es de carácter informativo.
             </div>
         </body>
         </html>
         """
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             HTML(string=html_template).write_pdf(tmp.name)
             with open(tmp.name, "rb") as f:
-                st.download_button("📥 DESCARGAR PDF FORMATO REFERENCIA", f, f"Reporte_{datos['placa']}.pdf")
+                st.download_button("📥 DESCARGAR REPORTE PROFESIONAL", f, "Reporte_Premium.pdf")
         os.unlink(tmp.name)
