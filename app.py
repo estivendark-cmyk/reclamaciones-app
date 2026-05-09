@@ -100,3 +100,21 @@ if uploaded_file:
             with open(tmp.name, "rb") as f:
                 st.download_button("📥 DESCARGAR REPORTE PROFESIONAL", f, "Reporte_Premium.pdf")
         os.unlink(tmp.name)
+# --- Nueva sección de Validación en el código ---
+st.markdown("---")
+st.subheader("🔍 Validación Externa")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    # Botón que genera el link directo al RUNT por Placa
+    # Nota: El RUNT requiere que el usuario final complete el Captcha por seguridad
+    link_runt = f"https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo"
+    st.link_button("🌐 Consultar RUNT (Placa KCM702)", link_runt, help="Haz clic para abrir la página oficial del RUNT")
+
+with col2:
+    # Enlace a Fasecolda para ver el valor comercial
+    link_fasecolda = "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx"
+    st.link_button("📊 Consultar Guía Fasecolda", link_fasecolda, help="Verifica el valor comercial del Toyota 2023")
+
+st.info("💡 Consejo: Una vez consultes el RUNT, puedes copiar los datos de 'Siniestros' y pegarlos en el reporte final.")
