@@ -8,10 +8,10 @@ import numpy as np
 from PIL import Image
 import re
 
-# Configuración inicial
-st.set_page_config(page_title="Lector IA de Siniestros", layout="wide")
+# Configuración de página
+st.set_page_config(page_title="Validador IA de Siniestros", layout="wide")
 
-# Cargar el motor de lectura (OCR)
+# Motor de lectura IA
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['es'])
@@ -21,112 +21,123 @@ reader = load_ocr()
 def get_image_base64(file):
     return base64.b64encode(file.read()).decode()
 
-# --- INTERFAZ ---
-st.sidebar.header("📝 Datos Extraídos por IA")
+# --- LÓGICA DE EXTRACCIÓN INTELIGENTE ---
+def extraer_datos_inteligentes(texto_lista):
+    texto_unido = " ".join(texto_lista).upper()
+    datos = {
+        "nombre": "NO DETECTADO",
+        "placa": "KCM702",
+        "valor": "$ 0,00",
+        "siniestro": "SIN REGISTRO"
+    }
+    
+    # 1. Detectar Placa (Formato AAA000 o AAA00A)
+    placas = re.findall(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', texto_unido)
+    if placas: datos["placa"] = placas[0]
+    
+    # 2. Detectar Valor Económico (Busca el símbolo $ seguido de números)
+    valores = re.findall(r'\$\s?[\d\.,]+', texto_unido)
+    if valores: datos["valor"] = valores[0]
+    
+    # 3. Detectar Nombre (Busca secuencias largas de palabras en mayúsculas)
+    # Se prioriza la detección de nombres que suelen estar después de "ASEGURADO" o "PROPIETARIO"
+    for i, palabra in enumerate(texto_lista):
+        if "NOMBRE" in palabra or "CLIENTE" in palabra or "ASEGURADO" in palabra:
+            # Toma las siguientes 3 palabras como el nombre probable
+            datos["nombre"] = " ".join(texto_lista[i+1:i+4])
+            break
 
-# Inicializar estados si no existen
-if 'txt_ia' not in st.session_state: st.session_state.txt_ia = ""
-if 'siniestro_detectado' not in st.session_state: st.session_state.siniestro_detectado = "NO DETECTADO"
+    # 4. Clasificar Siniestro
+    if any(p in texto_unido for p in ["SINIESTRO", "CHOQUE", "RECLAMACION", "INDEMNIZACION"]):
+        datos["siniestro"] = "SINIESTRO DETECTADO"
+    
+    return datos
 
-# Campos de transcripción (se llenarán con la IA)
-with st.sidebar.expander("🚗 Información del Vehículo", expanded=True):
-    placa = st.text_input("Placa Detectada", value="KCM702")
-    marca = st.text_input("Marca/Línea", value="TOYOTA COROLLA CROSS")
+# --- INTERFAZ DE USUARIO ---
+st.sidebar.header("📋 Datos Organizados por IA")
 
-with st.sidebar.expander("🚨 Estado del Siniestro (Auto)", expanded=True):
-    # Esta variable se llenará sola al leer la imagen
-    estado_ia = st.selectbox("Detección IA", ["SINIESTRO DETECTADO", "SIN REGISTRO", "EN PROCESO"], 
-                             index=0 if st.session_state.siniestro_detectado == "SI" else 1)
-    valor_recla = st.text_input("Valor de Reclamación", value="$ 5.467.111,00")
+# Inicializar sesión
+if 'smart_data' not in st.session_state:
+    st.session_state.smart_data = {"nombre": "", "placa": "", "valor": "", "siniestro": ""}
+
+with st.sidebar.expander("👤 Información del Cliente", expanded=True):
+    nombre_final = st.text_input("Nombre Extraído", value=st.session_state.smart_data.get("nombre", ""))
+    
+with st.sidebar.expander("🚗 Vehículo y Valor", expanded=True):
+    placa_final = st.text_input("Placa", value=st.session_state.smart_data.get("placa", ""))
+    valor_final = st.text_input("Valor Neto del Siniestro", value=st.session_state.smart_data.get("valor", ""))
+    estado_final = st.selectbox("Estado", ["SINIESTRO DETECTADO", "SIN REGISTRO", "EN PROCESO"])
 
 # --- CUERPO PRINCIPAL ---
-st.markdown("<h2 style='color: #001e4d; text-align: center;'>🤖 Analizador Automático de Documentos</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #001e4d;'>🤖 Analizador de Documentos y Valores</h2>", unsafe_allow_html=True)
 
-archivo = st.file_uploader("Sube el pantallazo (RUNT/SIMIT/Aseguradora)", type=["jpg", "png", "jpeg"])
+archivo = st.file_uploader("Sube la imagen del reporte", type=["jpg", "png", "jpeg"])
 
 if archivo:
-    # 1. PROCESAR IMAGEN CON IA
-    with st.spinner("IA Analizando contenido..."):
+    with st.spinner("IA Analizando y Clasificando..."):
         img_pil = Image.open(archivo)
         img_np = np.array(img_pil)
-        resultados = reader.readtext(img_np, detail=0)
-        texto_completo = " ".join(resultados).upper()
-        st.session_state.txt_ia = texto_completo
+        res_ocr = reader.readtext(img_np, detail=0)
         
-        # Lógica de detección automática
-        if any(palabra in texto_completo for palabra in ["SINIESTRO", "RECLAMACION", "CHOQUE", "INDEMNIZACION"]):
-            st.session_state.siniestro_detectado = "SI"
-            st.success("🚨 ¡Siniestro detectado automáticamente en el documento!")
-        else:
-            st.session_state.siniestro_detectado = "NO"
+        # Extraer datos estructurados
+        extraidos = extraer_datos_inteligentes(res_ocr)
+        st.session_state.smart_data = extraidos
+        
+        # Mostrar Previsualización
+        st.success(f"✅ Se ha detectado información para: {extraidos['nombre']}")
 
-    # 2. MOSTRAR RESULTADOS
-    col_img, col_txt = st.columns([1, 1])
-    with col_img:
-        st.image(archivo, caption="Evidencia", use_container_width=True)
-    with col_txt:
-        st.info("Texto extraído de la imagen (puedes copiar de aquí):")
-        st.text_area("Lectura OCR", value=st.session_state.txt_ia, height=250)
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.image(archivo, caption="Evidencia Original", use_container_width=True)
+    with col2:
+        st.info("📌 Desglose de Valores Detectados:")
+        st.write(f"**Valor de Reclamación:** {extraidos['valor']}")
+        st.write(f"**Estado:** {extraidos['siniestro']}")
 
-    # 3. GENERACIÓN DE PDF (Columna de Siniestro incluida)
     st.divider()
-    if st.button("✅ VALIDAR Y DESCARGAR PDF"):
-        with st.spinner("Generando documento..."):
-            img_base64 = base64.b64encode(archivo.getvalue()).decode()
+
+    if st.button("📥 GENERAR Y DESCARGAR PDF ESTRUCTURADO"):
+        img_64 = base64.b64encode(archivo.getvalue()).decode()
+        
+        html_pdf = f"""
+        <html>
+        <head>
+            <style>
+                @page {{ size: A4; margin: 0; }}
+                body {{ font-family: 'Arial', sans-serif; margin: 0; padding: 0; }}
+                .header {{ background: #001e4d; color: white; padding: 30px; text-align: center; }}
+                .yellow-bar {{ background: #ffcc00; padding: 10px; text-align: center; font-weight: bold; font-size: 14px; }}
+                .container {{ padding: 30px; }}
+                .table-info {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                .table-info td {{ padding: 15px; border: 1px solid #eee; }}
+                .label {{ background: #f8f9fa; font-weight: bold; width: 30%; color: #666; font-size: 11px; }}
+                .value {{ font-size: 14px; font-weight: bold; color: #333; }}
+                .valor-destacado {{ color: #d32f2f; font-size: 18px; }}
+                .img-box {{ text-align: center; margin-top: 20px; border: 1px solid #ddd; padding: 10px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header"><h1>REPORTE DE VALIDACIÓN DE VALORES</h1></div>
+            <div class="yellow-bar">DATOS EXTRAÍDOS POR SISTEMA IA</div>
             
-            html_pdf = f"""
-            <html>
-            <head>
-                <style>
-                    @page {{ size: A4; margin: 0; }}
-                    body {{ font-family: Arial, sans-serif; margin: 0; padding: 0; }}
-                    .header {{ background: #001e4d; color: white; padding: 30px; text-align: center; }}
-                    .banner {{ background: #ffcc00; padding: 10px; text-align: center; font-weight: bold; }}
-                    .container {{ padding: 20px; display: table; width: 100%; }}
-                    .col {{ display: table-cell; width: 50%; padding: 10px; vertical-align: top; }}
-                    .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px; }}
-                    .siniestro-col {{ background: #fff5f5; border-left: 5px solid #d32f2f; }}
-                    .label {{ font-weight: bold; color: #666; font-size: 10px; }}
-                    .value {{ font-size: 14px; margin-bottom: 10px; }}
-                    .detectado {{ color: #d32f2f; font-weight: bold; }}
-                </style>
-            </head>
-            <body>
-                <div class="header"><h1>REPORTE DE VALIDACIÓN AUTOMÁTICA</h1></div>
-                <div class="banner">DOCUMENTO INFORMATIVO GENERADO POR IA</div>
-                
-                <div class="container">
-                    <div class="col">
-                        <div class="card">
-                            <div class="label">PLACA VEHÍCULO</div><div class="value">{placa}</div>
-                            <div class="label">MARCA/LÍNEA</div><div class="value">{marca}</div>
-                        </div>
-                        <div class="card siniestro-col">
-                            <div class="label">DETECCIÓN AUTOMÁTICA DE SINIESTRO</div>
-                            <div class="value detectado">{estado_ia}</div>
-                            <div class="label">VALOR REGISTRADO</div>
-                            <div class="value">{valor_recla}</div>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="card">
-                            <div class="label">EVIDENCIA ESCANEADA</div>
-                            <img src="data:image/png;base64,{img_base64}" style="width:100%; border:1px solid #eee;">
-                        </div>
-                    </div>
+            <div class="container">
+                <table class="table-info">
+                    <tr><td class="label">NOMBRE DEL CLIENTE</td><td class="value">{nombre_final}</td></tr>
+                    <tr><td class="label">PLACA DEL VEHÍCULO</td><td class="value">{placa_final}</td></tr>
+                    <tr><td class="label">ESTADO DE SINIESTRO</td><td class="value">{estado_final}</td></tr>
+                    <tr><td class="label">VALOR DE RECLAMACIÓN</td><td class="value valor-destacado">{valor_final}</td></tr>
+                </table>
+
+                <div class="img-box">
+                    <p style="font-size: 10px; color: #888;">EVIDENCIA ADJUNTA</p>
+                    <img src="data:image/png;base64,{img_64}" style="max-width: 100%; max-height: 400px;">
                 </div>
-                <div style="padding:20px;">
-                    <div class="card">
-                        <div class="label">TRANSCRIPCIÓN COMPLETA DE LA IMAGEN</div>
-                        <div style="font-size: 9px; color: #444;">{st.session_state.txt_ia[:1000]}...</div>
-                    </div>
-                </div>
-            </body>
-            </html>
-            """
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                HTML(string=html_pdf).write_pdf(tmp.name)
-                with open(tmp.name, "rb") as f:
-                    st.download_button("📥 DESCARGAR REPORTE AHORA", f, f"Reporte_{placa}.pdf", mime="application/pdf")
-            os.unlink(tmp.name)
+            </div>
+        </body>
+        </html>
+        """
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            HTML(string=html_pdf).write_pdf(tmp.name)
+            with open(tmp.name, "rb") as f:
+                st.download_button("📥 GUARDAR DOCUMENTO PDF", f, f"Validacion_{placa_final}.pdf", mime="application/pdf")
