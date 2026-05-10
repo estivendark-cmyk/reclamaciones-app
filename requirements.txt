@@ -1,4 +1,6 @@
-streamlit
-weasyprint
 easyocr
 opencv-python-headless
+streamlit
+weasyprint
+pillow
+numpy
