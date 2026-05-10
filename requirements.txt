@@ -1,2 +1,4 @@
 streamlit
 weasyprint
+easyocr
+opencv-python-headless
