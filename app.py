@@ -8,11 +8,12 @@ import numpy as np
 from PIL import Image
 import re
 
-# Configuración
-st.set_page_config(page_title="Analizador de Historial de Siniestros", layout="wide")
+# Configuración de página
+st.set_page_config(page_title="Validador de Siniestros Múltiples", layout="wide")
 
 @st.cache_resource
 def load_ocr():
+    # Cargamos el lector con soporte para números y español
     return easyocr.Reader(['es'])
 
 reader = load_ocr()
@@ -20,116 +21,115 @@ reader = load_ocr()
 def get_image_base64(file):
     return base64.b64encode(file.read()).decode()
 
-# --- LÓGICA DE EXTRACCIÓN MÚLTIPLE ---
-def extraer_multiples_siniestros(texto_lista):
+# --- LÓGICA DE DETECCIÓN MEJORADA ---
+def analizar_historial_completo(texto_lista):
     texto_unido = " ".join(texto_lista).upper()
     
-    # 1. Buscar todos los montos de dinero detectados
-    # Busca patrones como $ 1.000.000 o $500,000
-    montos_detectados = re.findall(r'\$\s?[\d\.,]{4,}', texto_unido)
+    # 1. Regex mejorada: Busca $ seguido de cualquier combinación de números, puntos y comas
+    # Capta desde $500.000 hasta $100.000.000.00
+    patron_moneda = r'\$\s?[\d\.,]{4,}'
+    todos_los_montos = re.findall(patron_moneda, texto_unido)
     
-    # 2. Buscar placa
-    placas = re.findall(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', texto_unido)
-    placa = placas[0] if placas else "KCM702"
+    # 2. Detección de tipos de siniestro (PPD, PPP, Global, etc.)
+    siniestros_detectados = []
     
-    # 3. Intentar extraer nombre
+    # Buscamos en cada bloque de texto leído
+    for i, bloque in enumerate(texto_lista):
+        bloque_up = bloque.upper()
+        # Si el bloque contiene un monto, buscamos palabras clave cerca
+        if "$" in bloque:
+            detalle = "Reclamación Registrada"
+            # Buscamos en el bloque actual o los 2 anteriores/siguientes
+            contexto = " ".join(texto_lista[max(0, i-2):i+3]).upper()
+            
+            if "PPD" in contexto or "PARCIAL DA" in contexto: detalle = "Pérdida Parcial Daños (PPD)"
+            elif "PPP" in contexto or "PARCIAL HUR" in contexto: detalle = "Pérdida Parcial Hurto (PPP)"
+            elif "TOTAL" in contexto: detalle = "Pérdida Total"
+            elif "RESPONSABILIDAD" in contexto or "RCE" in contexto: detalle = "Responsabilidad Civil (RCE)"
+            
+            siniestros_detectados.append({"monto": bloque, "detalle": detalle})
+
+    # Si la lógica por contexto falla, usamos los montos brutos encontrados
+    if not siniestros_detectados and todos_los_montos:
+        for m in list(set(todos_los_montos)):
+            siniestros_detectados.append({"monto": m, "detalle": "Reclamación Detectada"})
+
+    # 3. Datos generales
+    placa = next(iter(re.findall(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', texto_unido)), "KCM702")
+    
     nombre = "NO DETECTADO"
     for i, p in enumerate(texto_lista):
-        if any(x in p.upper() for x in ["NOMBRE", "ASEGURADO", "PROPIETARIO"]):
+        if any(x in p.upper() for x in ["NOMBRE", "ASEGURADO", "CLIENTE"]):
             nombre = " ".join(texto_lista[i+1:i+4])
             break
             
-    return nombre, placa, list(set(montos_detectados)) # Eliminamos duplicados
+    return nombre, placa, siniestros_detectados
 
 # --- INTERFAZ ---
-st.sidebar.header("📋 Desglose de Historial")
+st.sidebar.header("📋 Panel de Control de Siniestros")
 
-if 'lista_siniestros' not in st.session_state:
-    st.session_state.lista_siniestros = []
+if 'historial' not in st.session_state:
+    st.session_state.historial = []
 
-with st.sidebar.expander("👤 Datos Generales", expanded=True):
-    nombre_f = st.text_input("Nombre Asegurado", value=st.session_state.get('nombre_ia', ""))
-    placa_f = st.text_input("Placa", value=st.session_state.get('placa_ia', ""))
+with st.sidebar.expander("👤 Datos de Identificación", expanded=True):
+    nombre_f = st.text_input("Asegurado", value=st.session_state.get('n_ia', ""), key="n_f")
+    placa_f = st.text_input("Placa", value=st.session_state.get('p_ia', ""), key="p_f")
 
-with st.sidebar.expander("💰 Lista de Reclamaciones Detectadas", expanded=True):
-    # Aquí permitimos editar los valores que la IA encontró
-    siniestros_editados = []
-    for i, monto in enumerate(st.session_state.lista_siniestros):
-        val = st.text_input(f"Siniestro #{i+1}", value=monto, key=f"sin_{i}")
-        desc = st.text_input(f"Detalle #{i+1}", value="Reclamación registrada", key=f"det_{i}")
-        siniestros_editados.append({"monto": val, "detalle": desc})
+with st.sidebar.expander("💰 Desglose de Reclamaciones", expanded=True):
+    final_list = []
+    for i, item in enumerate(st.session_state.historial):
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            m = st.text_input(f"Valor #{i+1}", value=item['monto'], key=f"m_{i}")
+        with col2:
+            d = st.text_input(f"Tipo #{i+1}", value=item['detalle'], key=f"d_{i}")
+        final_list.append({"monto": m, "detalle": d})
 
-# --- CUERPO PRINCIPAL ---
-st.markdown("<h2 style='text-align: center;'>🕵️ Analizador de Historial Múltiple</h2>", unsafe_allow_html=True)
+# --- CUERPO ---
+st.markdown("<h2 style='text-align: center; color: #001e4d;'>📊 Analizador Múltiple PPD/PPP</h2>", unsafe_allow_html=True)
 
-archivo = st.file_uploader("Subir imagen con múltiples reclamaciones", type=["jpg", "png", "jpeg"])
+archivo = st.file_uploader("Subir imagen del historial completo", type=["jpg", "png", "jpeg"])
 
 if archivo:
-    if st.button("🔍 ANALIZAR IMAGEN Y DESGLOSAR"):
-        with st.spinner("IA Identificando todos los montos..."):
+    if st.button("🔍 ESCANEAR TODOS LOS SINIESTROS"):
+        with st.spinner("IA buscando montos y tipos de siniestro..."):
             img = Image.open(archivo)
             res = reader.readtext(np.array(img), detail=0)
-            nombre, placa, montos = extraer_multiples_siniestros(res)
+            n, p, h = analizar_historial_completo(res)
             
-            st.session_state.nombre_ia = nombre
-            st.session_state.placa_ia = placa
-            st.session_state.lista_siniestros = montos
+            st.session_state.n_ia = n
+            st.session_state.p_ia = p
+            st.session_state.historial = h
             st.rerun()
 
-    if st.session_state.lista_siniestros:
-        st.success(f"Se han detectado {len(st.session_state.lista_siniestros)} montos diferentes.")
+    if st.session_state.historial:
+        st.success(f"Se han identificado {len(st.session_state.historial)} registros.")
         
-        # Generar PDF
-        if st.button("📥 GENERAR REPORTE DE HISTORIAL COMPLETO"):
+        if st.button("📥 GENERAR PDF CON DESGLOSE TOTAL"):
             img_64 = base64.b64encode(archivo.getvalue()).decode()
-            
-            # Construir filas de la tabla dinámicamente
-            filas_tabla = ""
-            for s in siniestros_editados:
-                filas_tabla += f"""
-                <tr>
-                    <td style="padding:10px; border:1px solid #eee;">{s['detalle']}</td>
-                    <td style="padding:10px; border:1px solid #eee; font-weight:bold; color:red;">{s['monto']}</td>
-                </tr>
-                """
+            filas = "".join([f"<tr><td style='padding:8px; border:1px solid #ddd;'>{x['detalle']}</td><td style='padding:8px; border:1px solid #ddd; color:red; font-weight:bold;'>{x['monto']}</td></tr>" for x in final_list])
 
             html_pdf = f"""
             <html>
-            <head>
-                <style>
-                    @page {{ size: A4; margin: 0; }}
-                    body {{ font-family: Arial; margin: 0; padding: 0; }}
-                    .header {{ background: #001e4d; color: white; padding: 25px; text-align: center; }}
-                    .container {{ padding: 30px; }}
-                    .info-box {{ margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 5px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-                    th {{ background: #eee; text-align: left; padding: 10px; font-size: 12px; }}
-                </style>
-            </head>
+            <head><style>
+                body {{ font-family: Arial; margin: 0; padding: 20px; }}
+                .header {{ background: #001e4d; color: white; padding: 20px; text-align: center; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th {{ background: #f2f2f2; padding: 10px; text-align: left; }}
+            </style></head>
             <body>
-                <div class="header"><h1>HISTORIAL INTEGRAL DE RECLAMACIONES</h1></div>
-                <div class="container">
-                    <div class="info-box">
-                        <b>ASEGURADO:</b> {nombre_f}<br>
-                        <b>PLACA:</b> {placa_f}
-                    </div>
-                    
-                    <h3>DESGLOSE DE SINIESTROS ENCONTRADOS</h3>
-                    <table>
-                        <thead><tr><th>DESCRIPCIÓN / DETALLE</th><th>VALOR RECLAMADO</th></tr></thead>
-                        <tbody>{filas_tabla}</tbody>
-                    </table>
-
-                    <div style="margin-top:20px; text-align:center;">
-                        <p style="font-size:10px; color:#666;">EVIDENCIA FOTOGRÁFICA</p>
-                        <img src="data:image/png;base64,{img_64}" style="max-width:80%; border:1px solid #ddd;">
-                    </div>
+                <div class="header"><h2>REPORTE INTEGRAL DE SINIESTRALIDAD</h2></div>
+                <p><b>Asegurado:</b> {nombre_f} | <b>Placa:</b> {placa_f}</p>
+                <table>
+                    <thead><tr><th>TIPO DE RECLAMACIÓN / DETALLE</th><th>VALOR PAGADO</th></tr></thead>
+                    <tbody>{filas}</tbody>
+                </table>
+                <div style="margin-top:20px; text-align:center;">
+                    <img src="data:image/png;base64,{img_64}" style="max-width:90%; border:1px solid #ccc;">
                 </div>
-            </body>
-            </html>
+            </body></html>
             """
-            
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 HTML(string=html_pdf).write_pdf(tmp.name)
                 with open(tmp.name, "rb") as f:
-                    st.download_button("📥 DESCARGAR REPORTE MULTI-SINIESTRO", f, f"Historial_{placa_f}.pdf")
+                    st.download_button("📥 DESCARGAR INFORME", f, f"Siniestros_{placa_f}.pdf")
