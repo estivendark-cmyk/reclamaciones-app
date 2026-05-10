@@ -6,75 +6,127 @@ import base64
 import easyocr
 import numpy as np
 from PIL import Image
+import re
 
-# Inicializar el lector de OCR (Español e Inglés)
+# Configuración inicial
+st.set_page_config(page_title="Lector IA de Siniestros", layout="wide")
+
+# Cargar el motor de lectura (OCR)
 @st.cache_resource
 def load_ocr():
-    return easyocr.Reader(['es', 'en'])
+    return easyocr.Reader(['es'])
 
 reader = load_ocr()
 
 def get_image_base64(file):
     return base64.b64encode(file.read()).decode()
 
-st.set_page_config(page_title="Gestor con IA de Reclamaciones", layout="wide")
+# --- INTERFAZ ---
+st.sidebar.header("📝 Datos Extraídos por IA")
 
-# --- LÓGICA DE PROCESAMIENTO DE IMAGEN ---
-def procesar_imagen(uploaded_file):
-    image = Image.open(uploaded_file)
-    image_np = np.array(image)
-    resultado = reader.readtext(image_np, detail=0)
-    texto_unido = " ".join(resultado).upper()
-    return texto_unido
+# Inicializar estados si no existen
+if 'txt_ia' not in st.session_state: st.session_state.txt_ia = ""
+if 'siniestro_detectado' not in st.session_state: st.session_state.siniestro_detectado = "NO DETECTADO"
 
-# --- BARRA LATERAL ---
-st.sidebar.header("📝 Panel de Transcripción")
+# Campos de transcripción (se llenarán con la IA)
+with st.sidebar.expander("🚗 Información del Vehículo", expanded=True):
+    placa = st.text_input("Placa Detectada", value="KCM702")
+    marca = st.text_input("Marca/Línea", value="TOYOTA COROLLA CROSS")
 
-# Variables de estado para los campos
-if 'datos_ocr' not in st.session_state:
-    st.session_state.datos_ocr = {
-        "placa": "KCM702",
-        "nombre": "ADRIANA FERNANDEZ LOPEZ",
-        "monto": "$ 5.467.111,00"
-    }
-
-with st.sidebar.expander("🚗 Datos del Vehículo", expanded=True):
-    placa = st.text_input("Placa", value=st.session_state.datos_ocr["placa"], key="placa_ia")
-    
-with st.sidebar.expander("👤 Datos del Asegurado"):
-    nombre = st.text_input("Nombre Completo", value=st.session_state.datos_ocr["nombre"], key="nombre_ia")
-
-with st.sidebar.expander("📊 Reclamación"):
-    monto = st.text_input("Monto", value=st.session_state.datos_ocr["monto"], key="monto_ia")
-
-with st.sidebar.expander("🚦 Texto Extraído (Lectura de Imagen)"):
-    # Aquí se mostrará todo lo que la IA leyó para que puedas copiar y pegar
-    texto_detectado = st.text_area("Texto detectado por la IA:", height=200)
+with st.sidebar.expander("🚨 Estado del Siniestro (Auto)", expanded=True):
+    # Esta variable se llenará sola al leer la imagen
+    estado_ia = st.selectbox("Detección IA", ["SINIESTRO DETECTADO", "SIN REGISTRO", "EN PROCESO"], 
+                             index=0 if st.session_state.siniestro_detectado == "SI" else 1)
+    valor_recla = st.text_input("Valor de Reclamación", value="$ 5.467.111,00")
 
 # --- CUERPO PRINCIPAL ---
-st.markdown("<h2 style='text-align: center;'>🤖 Extracción Automática de Datos</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='color: #001e4d; text-align: center;'>🤖 Analizador Automático de Documentos</h2>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("📸 Sube aquí el pantallazo o foto para transcribir", type=["jpg", "png", "jpeg"])
+archivo = st.file_uploader("Sube el pantallazo (RUNT/SIMIT/Aseguradora)", type=["jpg", "png", "jpeg"])
 
-if uploaded_file:
-    # PROCESAR CON OCR
-    with st.spinner("Leyendo imagen..."):
-        texto_extraido = procesar_imagen(uploaded_file)
-        # Intentar detectar la placa automáticamente (ejemplo simple de 6 caracteres)
-        import re
-        placas_encontradas = re.findall(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', texto_extraido)
+if archivo:
+    # 1. PROCESAR IMAGEN CON IA
+    with st.spinner("IA Analizando contenido..."):
+        img_pil = Image.open(archivo)
+        img_np = np.array(img_pil)
+        resultados = reader.readtext(img_np, detail=0)
+        texto_completo = " ".join(resultados).upper()
+        st.session_state.txt_ia = texto_completo
         
-        if placas_encontradas:
-            st.success(f"✅ Placa detectada: {placas_encontradas[0]}")
-            # Aquí podrías actualizar el session_state si quisieras automatizar más
-            
-    st.image(uploaded_file, caption="Imagen procesada", width=400)
-    
-    # Mostrar el texto para que el usuario solo tenga que copiar/pegar lo que necesite
-    st.info("👇 Abajo tienes todo el texto que la IA leyó de la imagen. Puedes copiarlo a los campos de la izquierda.")
-    st.text_area("Resultado de la transcripción automática:", value=texto_extraido, height=150)
+        # Lógica de detección automática
+        if any(palabra in texto_completo for palabra in ["SINIESTRO", "RECLAMACION", "CHOQUE", "INDEMNIZACION"]):
+            st.session_state.siniestro_detectado = "SI"
+            st.success("🚨 ¡Siniestro detectado automáticamente en el documento!")
+        else:
+            st.session_state.siniestro_detectado = "NO"
 
-    if st.button("🚀 GENERAR PDF FINAL"):
-        img_64 = base64.b64encode(uploaded_file.getvalue()).decode()
-        # (Aquí va el resto de tu lógica de PDF que ya tenemos configurada)
-        st.write("Generando documento con los datos de la izquierda...")
+    # 2. MOSTRAR RESULTADOS
+    col_img, col_txt = st.columns([1, 1])
+    with col_img:
+        st.image(archivo, caption="Evidencia", use_container_width=True)
+    with col_txt:
+        st.info("Texto extraído de la imagen (puedes copiar de aquí):")
+        st.text_area("Lectura OCR", value=st.session_state.txt_ia, height=250)
+
+    # 3. GENERACIÓN DE PDF (Columna de Siniestro incluida)
+    st.divider()
+    if st.button("✅ VALIDAR Y DESCARGAR PDF"):
+        with st.spinner("Generando documento..."):
+            img_base64 = base64.b64encode(archivo.getvalue()).decode()
+            
+            html_pdf = f"""
+            <html>
+            <head>
+                <style>
+                    @page {{ size: A4; margin: 0; }}
+                    body {{ font-family: Arial, sans-serif; margin: 0; padding: 0; }}
+                    .header {{ background: #001e4d; color: white; padding: 30px; text-align: center; }}
+                    .banner {{ background: #ffcc00; padding: 10px; text-align: center; font-weight: bold; }}
+                    .container {{ padding: 20px; display: table; width: 100%; }}
+                    .col {{ display: table-cell; width: 50%; padding: 10px; vertical-align: top; }}
+                    .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px; }}
+                    .siniestro-col {{ background: #fff5f5; border-left: 5px solid #d32f2f; }}
+                    .label {{ font-weight: bold; color: #666; font-size: 10px; }}
+                    .value {{ font-size: 14px; margin-bottom: 10px; }}
+                    .detectado {{ color: #d32f2f; font-weight: bold; }}
+                </style>
+            </head>
+            <body>
+                <div class="header"><h1>REPORTE DE VALIDACIÓN AUTOMÁTICA</h1></div>
+                <div class="banner">DOCUMENTO INFORMATIVO GENERADO POR IA</div>
+                
+                <div class="container">
+                    <div class="col">
+                        <div class="card">
+                            <div class="label">PLACA VEHÍCULO</div><div class="value">{placa}</div>
+                            <div class="label">MARCA/LÍNEA</div><div class="value">{marca}</div>
+                        </div>
+                        <div class="card siniestro-col">
+                            <div class="label">DETECCIÓN AUTOMÁTICA DE SINIESTRO</div>
+                            <div class="value detectado">{estado_ia}</div>
+                            <div class="label">VALOR REGISTRADO</div>
+                            <div class="value">{valor_recla}</div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card">
+                            <div class="label">EVIDENCIA ESCANEADA</div>
+                            <img src="data:image/png;base64,{img_base64}" style="width:100%; border:1px solid #eee;">
+                        </div>
+                    </div>
+                </div>
+                <div style="padding:20px;">
+                    <div class="card">
+                        <div class="label">TRANSCRIPCIÓN COMPLETA DE LA IMAGEN</div>
+                        <div style="font-size: 9px; color: #444;">{st.session_state.txt_ia[:1000]}...</div>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                HTML(string=html_pdf).write_pdf(tmp.name)
+                with open(tmp.name, "rb") as f:
+                    st.download_button("📥 DESCARGAR REPORTE AHORA", f, f"Reporte_{placa}.pdf", mime="application/pdf")
+            os.unlink(tmp.name)
