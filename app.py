@@ -8,10 +8,9 @@ import numpy as np
 from PIL import Image
 import re
 
-# Configuración de página
-st.set_page_config(page_title="Validador IA de Siniestros", layout="wide")
+# Configuración
+st.set_page_config(page_title="Analizador de Historial de Siniestros", layout="wide")
 
-# Motor de lectura IA
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['es'])
@@ -21,123 +20,116 @@ reader = load_ocr()
 def get_image_base64(file):
     return base64.b64encode(file.read()).decode()
 
-# --- LÓGICA DE EXTRACCIÓN INTELIGENTE ---
-def extraer_datos_inteligentes(texto_lista):
+# --- LÓGICA DE EXTRACCIÓN MÚLTIPLE ---
+def extraer_multiples_siniestros(texto_lista):
     texto_unido = " ".join(texto_lista).upper()
-    datos = {
-        "nombre": "NO DETECTADO",
-        "placa": "KCM702",
-        "valor": "$ 0,00",
-        "siniestro": "SIN REGISTRO"
-    }
     
-    # 1. Detectar Placa (Formato AAA000 o AAA00A)
+    # 1. Buscar todos los montos de dinero detectados
+    # Busca patrones como $ 1.000.000 o $500,000
+    montos_detectados = re.findall(r'\$\s?[\d\.,]{4,}', texto_unido)
+    
+    # 2. Buscar placa
     placas = re.findall(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', texto_unido)
-    if placas: datos["placa"] = placas[0]
+    placa = placas[0] if placas else "KCM702"
     
-    # 2. Detectar Valor Económico (Busca el símbolo $ seguido de números)
-    valores = re.findall(r'\$\s?[\d\.,]+', texto_unido)
-    if valores: datos["valor"] = valores[0]
-    
-    # 3. Detectar Nombre (Busca secuencias largas de palabras en mayúsculas)
-    # Se prioriza la detección de nombres que suelen estar después de "ASEGURADO" o "PROPIETARIO"
-    for i, palabra in enumerate(texto_lista):
-        if "NOMBRE" in palabra or "CLIENTE" in palabra or "ASEGURADO" in palabra:
-            # Toma las siguientes 3 palabras como el nombre probable
-            datos["nombre"] = " ".join(texto_lista[i+1:i+4])
+    # 3. Intentar extraer nombre
+    nombre = "NO DETECTADO"
+    for i, p in enumerate(texto_lista):
+        if any(x in p.upper() for x in ["NOMBRE", "ASEGURADO", "PROPIETARIO"]):
+            nombre = " ".join(texto_lista[i+1:i+4])
             break
+            
+    return nombre, placa, list(set(montos_detectados)) # Eliminamos duplicados
 
-    # 4. Clasificar Siniestro
-    if any(p in texto_unido for p in ["SINIESTRO", "CHOQUE", "RECLAMACION", "INDEMNIZACION"]):
-        datos["siniestro"] = "SINIESTRO DETECTADO"
-    
-    return datos
+# --- INTERFAZ ---
+st.sidebar.header("📋 Desglose de Historial")
 
-# --- INTERFAZ DE USUARIO ---
-st.sidebar.header("📋 Datos Organizados por IA")
+if 'lista_siniestros' not in st.session_state:
+    st.session_state.lista_siniestros = []
 
-# Inicializar sesión
-if 'smart_data' not in st.session_state:
-    st.session_state.smart_data = {"nombre": "", "placa": "", "valor": "", "siniestro": ""}
+with st.sidebar.expander("👤 Datos Generales", expanded=True):
+    nombre_f = st.text_input("Nombre Asegurado", value=st.session_state.get('nombre_ia', ""))
+    placa_f = st.text_input("Placa", value=st.session_state.get('placa_ia', ""))
 
-with st.sidebar.expander("👤 Información del Cliente", expanded=True):
-    nombre_final = st.text_input("Nombre Extraído", value=st.session_state.smart_data.get("nombre", ""))
-    
-with st.sidebar.expander("🚗 Vehículo y Valor", expanded=True):
-    placa_final = st.text_input("Placa", value=st.session_state.smart_data.get("placa", ""))
-    valor_final = st.text_input("Valor Neto del Siniestro", value=st.session_state.smart_data.get("valor", ""))
-    estado_final = st.selectbox("Estado", ["SINIESTRO DETECTADO", "SIN REGISTRO", "EN PROCESO"])
+with st.sidebar.expander("💰 Lista de Reclamaciones Detectadas", expanded=True):
+    # Aquí permitimos editar los valores que la IA encontró
+    siniestros_editados = []
+    for i, monto in enumerate(st.session_state.lista_siniestros):
+        val = st.text_input(f"Siniestro #{i+1}", value=monto, key=f"sin_{i}")
+        desc = st.text_input(f"Detalle #{i+1}", value="Reclamación registrada", key=f"det_{i}")
+        siniestros_editados.append({"monto": val, "detalle": desc})
 
 # --- CUERPO PRINCIPAL ---
-st.markdown("<h2 style='text-align: center; color: #001e4d;'>🤖 Analizador de Documentos y Valores</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🕵️ Analizador de Historial Múltiple</h2>", unsafe_allow_html=True)
 
-archivo = st.file_uploader("Sube la imagen del reporte", type=["jpg", "png", "jpeg"])
+archivo = st.file_uploader("Subir imagen con múltiples reclamaciones", type=["jpg", "png", "jpeg"])
 
 if archivo:
-    with st.spinner("IA Analizando y Clasificando..."):
-        img_pil = Image.open(archivo)
-        img_np = np.array(img_pil)
-        res_ocr = reader.readtext(img_np, detail=0)
-        
-        # Extraer datos estructurados
-        extraidos = extraer_datos_inteligentes(res_ocr)
-        st.session_state.smart_data = extraidos
-        
-        # Mostrar Previsualización
-        st.success(f"✅ Se ha detectado información para: {extraidos['nombre']}")
-
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        st.image(archivo, caption="Evidencia Original", use_container_width=True)
-    with col2:
-        st.info("📌 Desglose de Valores Detectados:")
-        st.write(f"**Valor de Reclamación:** {extraidos['valor']}")
-        st.write(f"**Estado:** {extraidos['siniestro']}")
-
-    st.divider()
-
-    if st.button("📥 GENERAR Y DESCARGAR PDF ESTRUCTURADO"):
-        img_64 = base64.b64encode(archivo.getvalue()).decode()
-        
-        html_pdf = f"""
-        <html>
-        <head>
-            <style>
-                @page {{ size: A4; margin: 0; }}
-                body {{ font-family: 'Arial', sans-serif; margin: 0; padding: 0; }}
-                .header {{ background: #001e4d; color: white; padding: 30px; text-align: center; }}
-                .yellow-bar {{ background: #ffcc00; padding: 10px; text-align: center; font-weight: bold; font-size: 14px; }}
-                .container {{ padding: 30px; }}
-                .table-info {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                .table-info td {{ padding: 15px; border: 1px solid #eee; }}
-                .label {{ background: #f8f9fa; font-weight: bold; width: 30%; color: #666; font-size: 11px; }}
-                .value {{ font-size: 14px; font-weight: bold; color: #333; }}
-                .valor-destacado {{ color: #d32f2f; font-size: 18px; }}
-                .img-box {{ text-align: center; margin-top: 20px; border: 1px solid #ddd; padding: 10px; }}
-            </style>
-        </head>
-        <body>
-            <div class="header"><h1>REPORTE DE VALIDACIÓN DE VALORES</h1></div>
-            <div class="yellow-bar">DATOS EXTRAÍDOS POR SISTEMA IA</div>
+    if st.button("🔍 ANALIZAR IMAGEN Y DESGLOSAR"):
+        with st.spinner("IA Identificando todos los montos..."):
+            img = Image.open(archivo)
+            res = reader.readtext(np.array(img), detail=0)
+            nombre, placa, montos = extraer_multiples_siniestros(res)
             
-            <div class="container">
-                <table class="table-info">
-                    <tr><td class="label">NOMBRE DEL CLIENTE</td><td class="value">{nombre_final}</td></tr>
-                    <tr><td class="label">PLACA DEL VEHÍCULO</td><td class="value">{placa_final}</td></tr>
-                    <tr><td class="label">ESTADO DE SINIESTRO</td><td class="value">{estado_final}</td></tr>
-                    <tr><td class="label">VALOR DE RECLAMACIÓN</td><td class="value valor-destacado">{valor_final}</td></tr>
-                </table>
+            st.session_state.nombre_ia = nombre
+            st.session_state.placa_ia = placa
+            st.session_state.lista_siniestros = montos
+            st.rerun()
 
-                <div class="img-box">
-                    <p style="font-size: 10px; color: #888;">EVIDENCIA ADJUNTA</p>
-                    <img src="data:image/png;base64,{img_64}" style="max-width: 100%; max-height: 400px;">
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+    if st.session_state.lista_siniestros:
+        st.success(f"Se han detectado {len(st.session_state.lista_siniestros)} montos diferentes.")
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            HTML(string=html_pdf).write_pdf(tmp.name)
-            with open(tmp.name, "rb") as f:
-                st.download_button("📥 GUARDAR DOCUMENTO PDF", f, f"Validacion_{placa_final}.pdf", mime="application/pdf")
+        # Generar PDF
+        if st.button("📥 GENERAR REPORTE DE HISTORIAL COMPLETO"):
+            img_64 = base64.b64encode(archivo.getvalue()).decode()
+            
+            # Construir filas de la tabla dinámicamente
+            filas_tabla = ""
+            for s in siniestros_editados:
+                filas_tabla += f"""
+                <tr>
+                    <td style="padding:10px; border:1px solid #eee;">{s['detalle']}</td>
+                    <td style="padding:10px; border:1px solid #eee; font-weight:bold; color:red;">{s['monto']}</td>
+                </tr>
+                """
+
+            html_pdf = f"""
+            <html>
+            <head>
+                <style>
+                    @page {{ size: A4; margin: 0; }}
+                    body {{ font-family: Arial; margin: 0; padding: 0; }}
+                    .header {{ background: #001e4d; color: white; padding: 25px; text-align: center; }}
+                    .container {{ padding: 30px; }}
+                    .info-box {{ margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 5px; }}
+                    table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                    th {{ background: #eee; text-align: left; padding: 10px; font-size: 12px; }}
+                </style>
+            </head>
+            <body>
+                <div class="header"><h1>HISTORIAL INTEGRAL DE RECLAMACIONES</h1></div>
+                <div class="container">
+                    <div class="info-box">
+                        <b>ASEGURADO:</b> {nombre_f}<br>
+                        <b>PLACA:</b> {placa_f}
+                    </div>
+                    
+                    <h3>DESGLOSE DE SINIESTROS ENCONTRADOS</h3>
+                    <table>
+                        <thead><tr><th>DESCRIPCIÓN / DETALLE</th><th>VALOR RECLAMADO</th></tr></thead>
+                        <tbody>{filas_tabla}</tbody>
+                    </table>
+
+                    <div style="margin-top:20px; text-align:center;">
+                        <p style="font-size:10px; color:#666;">EVIDENCIA FOTOGRÁFICA</p>
+                        <img src="data:image/png;base64,{img_64}" style="max-width:80%; border:1px solid #ddd;">
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                HTML(string=html_pdf).write_pdf(tmp.name)
+                with open(tmp.name, "rb") as f:
+                    st.download_button("📥 DESCARGAR REPORTE MULTI-SINIESTRO", f, f"Historial_{placa_f}.pdf")
