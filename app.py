@@ -103,4 +103,70 @@ with col_img:
             with st.spinner("Analizando imagen..."):
                 img_pil = Image.open(archivo).convert('RGB')
                 res = reader.readtext(np.array(img_pil), detail=0)
+                txt_u = "".join(res).upper().replace(" ", "").replace("-", "")
+                
+                p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_u)
+                v_match = re.search(r'[A-HJ-NPR-Z0-9]{17}', txt_u)
+                
+                if p_match: st.session_state.v_data["placa"] = p_match.group()
+                if v_match: st.session_state.v_data["vin"] = v_match.group()
+                st.rerun()
+        st.image(archivo, use_container_width=True)
+
+# --- GENERAR PDF ---
+st.divider()
+if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
+    if not archivo:
+        st.error("Adjunte la imagen de evidencia.")
+    else:
+        pdf = FPDF()
+        pdf.add_page()
+        
+        pdf.set_fill_color(0, 30, 77)
+        pdf.rect(0, 0, 210, 35, 'F')
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS Y HALLAZGOS", ln=True, align='C')
+        
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(10)
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(95, 9, f"PLACA: {placa_f}", border=1)
+        pdf.cell(95, 9, f"VIN: {vin_f}", border=1, ln=True)
+        pdf.cell(95, 9, f"VENCIMIENTO SOAT: {f_soat}", border=1)
+        pdf.cell(95, 9, f"VENCIMIENTO TECNO: {f_tecno}", border=1, ln=True)
+        
+        pdf.ln(8)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(190, 9, "DETALLE DE RECLAMACIONES / SINIESTROS", ln=True, fill=True, border=1)
+        pdf.set_font("Arial", '', 10)
+        for r in items_recla:
+            pdf.cell(140, 8, f"Tipo: {r['tipo']}", border=1)
+            pdf.cell(50, 8, r['valor'], border=1, ln=True)
+        
+        if multas_detectadas:
+            pdf.ln(5)
+            pdf.set_font("Arial", 'B', 11)
+            pdf.cell(190, 9, "RESUMEN DE COMPARENDOS (SIMIT)", ln=True, fill=True, border=1)
+            pdf.set_font("Arial", '', 10)
+            for m in multas_detectadas:
+                pdf.cell(140, 8, "Comparendo detectado", border=1)
+                pdf.cell(50, 8, m, border=1, ln=True)
+            
+        pdf.ln(10)
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(190, 10, "EVIDENCIA FOTOGRÁFICA REGISTRADA", ln=True)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            Image.open(archivo).convert('RGB').save(tmp.name)
+            pdf.image(tmp.name, x=10, w=180)
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            pdf.output(tmp_pdf.name)
+            with open(tmp_pdf.name, "rb") as f:
+                st.download_button("📥 DESCARGAR REPORTE FINAL", f, f"Reporte_{placa_f}.pdf")
+            os.unlink(tmp_pdf.name)
+            with st.spinner("Analizando imagen..."):
+                img_pil = Image.open(archivo).convert('RGB')
+                res = reader.readtext(np.array(img_pil), detail=0)
                 txt_u = "".join(res).upper().replace("
