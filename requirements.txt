@@ -5,3 +5,4 @@ weasyprint
 pillow
 numpy
 fpdf2
+google-generativeai
