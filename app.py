@@ -7,9 +7,8 @@ import numpy as np
 from PIL import Image
 import easyocr
 
-st.set_page_config(page_title="Validador Técnico Automotriz", layout="wide")
+st.set_page_config(page_title="Scanner CDA Pro", layout="wide")
 
-# Cargamos el motor de IA (Solo una vez)
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['es'], gpu=False)
@@ -20,136 +19,128 @@ def limpiar_monto(texto):
     numeros = re.sub(r'[^\d]', '', texto)
     return int(numeros) if numeros else 0
 
-# --- LÓGICA DE DETECCIÓN ---
-def detectar_vehiculo(texto_lista):
+# --- MOTOR DE ESCANEO ---
+def escanear_documento(texto_lista):
     texto_unido = " ".join(texto_lista).upper()
     
-    # Buscar Placa (Formatos colombianos comunes)
+    # Identificación
     placa = next(iter(re.findall(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', texto_unido)), "")
-    
-    # Buscar VIN (17 caracteres alfanuméricos, omitiendo I, O, Q)
     vin = next(iter(re.findall(r'[A-HJ-NPR-Z0-9]{17}', texto_unido)), "")
     
-    # Buscar Montos de dinero
-    montos = re.findall(r'\$\s?[\d\.,]{5,}', texto_unido)
+    # Montos por categorías
+    datos_detectados = {"soat": "", "tecno": "", "comparendos": [], "reclamaciones": []}
     
-    return placa, vin, list(set(montos))
+    for i, bloque in enumerate(texto_lista):
+        b = bloque.upper()
+        # Buscar montos de dinero
+        if "$" in b or any(term in b for term in ["VALOR", "SALDO", "TOTAL"]):
+            monto = next(iter(re.findall(r'\$\s?[\d\.,]{5,}', b)), b)
+            
+            # Clasificar por contexto cercano
+            contexto = " ".join(texto_lista[max(0, i-2):i+3]).upper()
+            if "SOAT" in contexto: datos_detectados["soat"] = monto
+            elif "TECNOMEC" in contexto or "RTM" in contexto: datos_detectados["tecno"] = monto
+            elif "COMPARENDO" in contexto or "MULTA" in contexto: datos_detectados["comparendos"].append(monto)
+            else: datos_detectados["reclamaciones"].append(monto)
+            
+    return placa, vin, datos_detectados
 
-# --- BARRA LATERAL ---
-st.sidebar.header("📋 Información del Vehículo")
+# --- MENÚ IZQUIERDO (SIDEBAR) ---
+if 'v_data' not in st.session_state:
+    st.session_state.v_data = {"placa": "", "vin": "", "soat": "", "tecno": "", "multas": [], "recla": []}
 
-if 'vehiculo' not in st.session_state:
-    st.session_state.vehiculo = {"placa": "", "vin": "", "siniestros": []}
+st.sidebar.header("📋 Datos del Vehículo")
 
-with st.sidebar.expander("🚗 Datos de Identificación", expanded=True):
-    placa_f = st.text_input("Placa", value=st.session_state.vehiculo["placa"])
-    vin_f = st.text_input("Número VIN (Chasis)", value=st.session_state.vehiculo["vin"])
-
-with st.sidebar.expander("💰 Reclamaciones", expanded=True):
-    if st.button("➕ Agregar Fila"):
-        st.session_state.vehiculo["siniestros"].append({"valor": "$ 0", "tipo": "Reclamación"})
-    
-    reclamaciones_finales = []
-    suma_total = 0
-    for i, item in enumerate(st.session_state.vehiculo["siniestros"]):
-        v = st.text_input(f"Valor {i+1}", value=item.get('valor', '$ 0'), key=f"v_{i}")
-        t = st.text_input(f"Tipo {i+1}", value=item.get('tipo', 'Reclamación'), key=f"t_{i}")
-        suma_total += limpiar_monto(v)
-        reclamaciones_finales.append({"valor": v, "tipo": t})
+with st.sidebar:
+    placa_f = st.text_input("📍 Placa", value=st.session_state.v_data["placa"])
+    vin_f = st.text_input("🆔 VIN / Chasis", value=st.session_state.v_data["vin"])
     
     st.divider()
-    st.metric("SUMA TOTAL VALIDADA", f"$ {suma_total:,.0f}")
+    st.subheader("💰 Gastos y Reclamaciones")
+    val_soat = st.text_input("📝 Valor SOAT", value=st.session_state.v_data["soat"])
+    val_tecno = st.text_input("🛠️ Valor Tecnomecánica", value=st.session_state.v_data["tecno"])
+    
+    # Listas dinámicas para Multas y Reclamaciones
+    st.markdown("**🚥 Comparendos / Multas**")
+    for i, m in enumerate(st.session_state.v_data["multas"]):
+        st.session_state.v_data["multas"][i] = st.text_input(f"Multa {i+1}", value=m, key=f"m_{i}")
+        
+    st.markdown("**🛡️ Otras Reclamaciones (PPD/PPP)**")
+    for i, r in enumerate(st.session_state.v_data["recla"]):
+        st.session_state.v_data["recla"][i] = st.text_input(f"Recla {i+1}", value=r, key=f"r_{i}")
+
+    # Cálculo de Suma Total
+    total = limpiar_monto(val_soat) + limpiar_monto(val_tecno)
+    total += sum(limpiar_monto(x) for x in st.session_state.v_data["multas"])
+    total += sum(limpiar_monto(x) for x in st.session_state.v_data["recla"])
+    
+    st.divider()
+    st.metric("TOTAL GENERAL", f"$ {total:,.0f}")
 
 # --- CUERPO PRINCIPAL ---
-st.title("🕵️ Validador Técnico de Siniestralidad")
+st.title("🚀 Scanner CDA - Validador Automotriz")
 
-# Links Públicos
-c1, c2, c3 = st.columns(3)
-with c1: st.link_button("🌐 RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo")
-with c2: st.link_button("🚦 SIMIT", "https://www.fcm.org.co/simit/#/estado-cuenta")
-with c3: st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx")
+col_input, col_links = st.columns([2, 1])
 
-st.divider()
+with col_links:
+    st.info("🔗 Enlaces de Consulta")
+    st.link_button("🌐 Ir a RUNT", "https://www.runt.com.co/", use_container_width=True)
+    st.link_button("🚦 Ir a SIMIT", "https://www.fcm.org.co/simit/", use_container_width=True)
+    st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
 
-col_ev, col_img = st.columns(2)
-
-with col_ev:
-    st.subheader("📄 Transcripciones de Soporte")
-    txt_soat = st.text_area("SOAT / Tecno / Otros:", height=150, placeholder="Pega aquí el texto para el PDF...")
-    
-with col_img:
-    st.subheader("📸 Evidencia Fotográfica")
-    archivo = st.file_uploader("Subir imagen (RUNT/Fasecolda)", type=["jpg", "png", "jpeg"])
-    
+with col_input:
+    archivo = st.file_uploader("📸 Sube evidencia (Imagen)", type=["jpg", "png", "jpeg"])
     if archivo:
-        if st.button("🚀 ESCANEAR PLACA Y VIN"):
-            with st.spinner("IA analizando imagen..."):
+        if st.button("🔍 ESCANEAR E IMPORTAR AL MENÚ"):
+            with st.spinner("IA extrayendo datos..."):
                 img = Image.open(archivo).convert('RGB')
                 res = reader.readtext(np.array(img), detail=0)
-                p, v, m = detectar_vehiculo(res)
+                p, v, d = escanear_documento(res)
                 
-                # Actualizar estado
-                st.session_state.vehiculo["placa"] = p if p else placa_f
-                st.session_state.vehiculo["vin"] = v if v else vin_f
-                if m:
-                    for val in m:
-                        st.session_state.vehiculo["siniestros"].append({"valor": val, "tipo": "Detectado"})
+                # Cargar al menú izquierdo
+                st.session_state.v_data["placa"] = p if p else placa_f
+                st.session_state.v_data["vin"] = v if v else vin_f
+                st.session_state.v_data["soat"] = d["soat"] if d["soat"] else val_soat
+                st.session_state.v_data["tecno"] = d["tecno"] if d["tecno"] else val_tecno
+                st.session_state.v_data["multas"].extend(d["comparendos"])
+                st.session_state.v_data["recla"].extend(d["reclamaciones"])
                 st.rerun()
-        st.image(archivo, width=350)
+        st.image(archivo, width=400)
 
-# --- GENERACIÓN DE PDF ---
-if st.button("📥 DESCARGAR REPORTE FINAL PDF"):
+# --- GENERAR PDF ---
+if st.button("📥 GENERAR INFORME FINAL PDF"):
     if not archivo:
-        st.error("Sube la imagen de evidencia")
+        st.error("Adjunta una imagen para el reporte")
     else:
         pdf = FPDF()
         pdf.add_page()
-        # Encabezado
-        pdf.set_fill_color(0, 30, 77)
-        pdf.rect(0, 0, 210, 40, 'F')
-        pdf.set_text_color(255, 255, 255)
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(190, 20, "INFORME TÉCNICO AUTOMOTRIZ", ln=True, align='C')
+        pdf.set_fill_color(0, 30, 77); pdf.set_text_color(255, 255, 255)
+        pdf.cell(190, 15, "REPORTE TÉCNICO DE INSPECCIÓN", ln=True, align='C', fill=True)
         
-        # Datos del vehículo
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.ln(15)
+        pdf.set_text_color(0, 0, 0); pdf.set_font("Arial", 'B', 12); pdf.ln(10)
         pdf.cell(95, 10, f"PLACA: {placa_f}", border=1)
         pdf.cell(95, 10, f"VIN: {vin_f}", border=1, ln=True)
         
-        # Tabla de siniestros
-        pdf.ln(10)
-        pdf.set_fill_color(240, 240, 240)
-        pdf.cell(100, 10, "DESCRIPCIÓN", border=1, fill=True)
-        pdf.cell(90, 10, "VALOR", border=1, fill=True, ln=True)
+        pdf.ln(5); pdf.cell(190, 10, "DETALLE FINANCIERO", ln=True, fill=True)
+        pdf.set_font("Arial", '', 10)
+        pdf.cell(140, 8, "VALOR SOAT", border=1); pdf.cell(50, 8, val_soat, border=1, ln=True)
+        pdf.cell(140, 8, "VALOR TECNOMECÁNICA", border=1); pdf.cell(50, 8, val_tecno, border=1, ln=True)
         
-        pdf.set_font("Arial", '', 11)
-        for item in reclamaciones_finales:
-            pdf.cell(100, 10, item['tipo'], border=1)
-            pdf.set_text_color(200, 0, 0)
-            pdf.cell(90, 10, item['valor'], border=1, ln=True)
-            pdf.set_text_color(0, 0, 0)
+        for m in st.session_state.v_data["multas"]:
+            pdf.cell(140, 8, "COMPARENDO / MULTA", border=1); pdf.cell(50, 8, m, border=1, ln=True)
+        for r in st.session_state.v_data["recla"]:
+            pdf.cell(140, 8, "RECLAMACIÓN / OTROS", border=1); pdf.cell(50, 8, r, border=1, ln=True)
             
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(100, 10, "SUMA TOTAL VALIDADA", border=1, fill=True)
-        pdf.cell(90, 10, f"$ {suma_total:,.0f}", border=1, ln=True, fill=True)
+        pdf.cell(140, 10, "TOTAL GENERAL VALIDADO", border=1, fill=True)
+        pdf.cell(50, 10, f"$ {total:,.0f}", border=1, ln=True, fill=True)
         
-        # Transcripciones
-        pdf.ln(10)
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(190, 10, "TRANSCRIPCIONES DE SOPORTE", ln=True)
-        pdf.set_font("Arial", '', 9)
-        pdf.multi_cell(190, 5, txt_soat)
-
-        # Imagen
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            img_ev = Image.open(archivo).convert('RGB')
-            img_ev.save(tmp.name)
-            pdf.ln(10)
-            pdf.image(tmp.name, x=10, w=180)
-        
+            Image.open(archivo).convert('RGB').save(tmp.name)
+            pdf.ln(10); pdf.image(tmp.name, x=10, w=180)
+            
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
             pdf.output(tmp_pdf.name)
             with open(tmp_pdf.name, "rb") as f:
-                st.download_button("📥 DESCARGAR PDF", f, f"Reporte_{placa_f}.pdf")
+                st.download_button("📥 DESCARGAR RESULTADOS", f, f"Inspeccion_{placa_f}.pdf")
