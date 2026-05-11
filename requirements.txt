@@ -4,3 +4,4 @@ streamlit
 weasyprint
 pillow
 numpy
+fpdf2
