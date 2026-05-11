@@ -7,7 +7,7 @@ from PIL import Image
 import easyocr
 import os
 
-st.set_page_config(page_title="Validador Técnico CDA", layout="wide")
+st.set_page_config(page_title="Validador Técnico CDA Colombia", layout="wide")
 
 @st.cache_resource
 def load_ocr():
@@ -16,7 +16,6 @@ def load_ocr():
 reader = load_ocr()
 
 def limpiar_monto(texto):
-    """Extrae solo números de una cadena para poder sumar."""
     numeros = re.sub(r'[^\d]', '', texto)
     return int(numeros) if numeros else 0
 
@@ -53,26 +52,27 @@ with st.sidebar:
         total_siniestros += monto_num
         items_recla.append({"valor": v, "tipo": t})
 
-    # Mostrar Suma Total en el Menú Izquierdo
     if st.session_state.v_data["recla"]:
         st.divider()
         st.markdown(f"### 💰 Total Siniestros\n**$ {total_siniestros:,.0f}**")
 
 # --- CUERPO PRINCIPAL ---
-st.title("🚗 Analizador Técnico de Historial")
+st.title("🚗 Analizador Técnico de Historial - Colombia")
 
-# --- ENLACES DE CONSULTA (ACTUALIZADOS) ---
-st.info("🔗 Accesos Rápidos a Consultas Oficiales y Técnicas")
+st.info("🔗 Consultas Oficiales en Colombia")
 c1, c2, c3 = st.columns(3)
 with c1: 
-    st.link_button("🌐 RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
-    st.link_button("🚓 Antecedentes Policía", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
+    st.link_button("🌐 RUNT NACIONAL", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
+    st.link_button("🚓 ANTECEDENTES POLICÍA", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
+    st.link_button("⚖️ RAMA JUDICIAL (Procesos)", "https://consultaprocesos.ramajudicial.gov.co/Consulta/NumeroRadicacion", use_container_width=True)
 with c2: 
-    st.link_button("🚦 SIMIT", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
-    st.link_button("🕵️ VIN Decoder (NHTSA)", "https://vpic.nhtsa.dot.gov/decoder/", use_container_width=True)
+    st.link_button("🚦 SIMIT (Multas)", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
+    st.link_button("🏢 MOVILIDAD BOGOTÁ", "https://www.movilidadbogota.gov.co/web/SIMIT", use_container_width=True)
+    st.link_button("📸 FOTOMULTAS MEDELLÍN", "https://www.medellin.gov.co/es/secretaria-de-movilidad/consultas-en-linea/", use_container_width=True)
 with c3: 
-    st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
-    st.link_button("🏦 Impuestos Bogotá (SHD)", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
+    st.link_button("📊 FASECOLDA (Siniestros)", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
+    st.link_button("🏦 IMPUESTOS (Hacienda)", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
+    st.link_button("🛠️ ADUANAS (DIAN - Importación)", "https://www.dian.gov.co/aduanas/Paginas/Inicio.aspx", use_container_width=True)
 
 st.divider()
 
@@ -96,58 +96,4 @@ with col_img:
     archivo = st.file_uploader("Subir foto de RUNT / Fasecolda", type=["jpg", "png", "jpeg"])
     
     if archivo:
-        if st.button("🔍 INICIAR ESCANEO DE IA"):
-            with st.spinner("Analizando imagen..."):
-                img_pil = Image.open(archivo).convert('RGB')
-                res = reader.readtext(np.array(img_pil), detail=0)
-                # LÍNEA CORREGIDA ABAJO:
-                txt_u = "".join(res).upper().replace(" ", "").replace("-", "")
-                
-                p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_u)
-                v_match = re.search(r'[A-HJ-NPR-Z0-9]{17}', txt_u)
-                
-                if p_match: st.session_state.v_data["placa"] = p_match.group()
-                if v_match: st.session_state.v_data["vin"] = v_match.group()
-                st.rerun()
-        st.image(archivo, use_container_width=True)
-
-# --- GENERAR PDF ---
-st.divider()
-if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
-    if not archivo:
-        st.error("Adjunte la imagen de evidencia.")
-    else:
-        pdf = FPDF()
-        pdf.add_page()
-        
-        # Encabezado
-        pdf.set_fill_color(0, 30, 77)
-        pdf.rect(0, 0, 210, 35, 'F')
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS Y HALLAZGOS", ln=True, align='C')
-        
-        # Datos Identificación
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(10)
-        pdf.set_font("Arial", 'B', 11)
-        pdf.cell(95, 9, f"PLACA: {placa_f}", border=1)
-        pdf.cell(95, 9, f"VIN: {vin_f}", border=1, ln=True)
-        pdf.cell(95, 9, f"VENCIMIENTO SOAT: {f_soat}", border=1)
-        pdf.cell(95, 9, f"VENCIMIENTO TECNO: {f_tecno}", border=1, ln=True)
-        
-        # Siniestros
-        pdf.ln(8)
-        pdf.set_fill_color(240, 240, 240)
-        pdf.set_font("Arial", 'B', 11)
-        pdf.cell(190, 9, "DETALLE DE RECLAMACIONES / SINIESTROS", ln=True, fill=True, border=1)
-        pdf.set_font("Arial", '', 10)
-        for r in items_recla:
-            pdf.cell(140, 8, f"Tipo: {r['tipo']}", border=1)
-            pdf.cell(50, 8, r['valor'], border=1, ln=True)
-        
-        # Multas (Sin mostrar total acumulado, solo listado)
-        if multas_detectadas:
-            pdf.ln(5)
-            pdf.set_font("Arial", 'B', 11)
-            pdf.cell
+        if st
