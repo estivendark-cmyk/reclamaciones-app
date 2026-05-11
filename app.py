@@ -53,29 +53,26 @@ with st.sidebar:
         total_siniestros += monto_num
         items_recla.append({"valor": v, "tipo": t})
 
+    # Mostrar Suma Total en el Menú Izquierdo
     if st.session_state.v_data["recla"]:
         st.divider()
-        st.metric("💰 TOTAL RECLAMACIONES", f"$ {total_siniestros:,.0f}")
+        st.markdown(f"### 💰 Total Siniestros\n**$ {total_siniestros:,.0f}**")
 
 # --- CUERPO PRINCIPAL ---
 st.title("🚗 Analizador Técnico de Historial")
 
-# Enlaces principales
-st.info("🔗 Accesos Rápidos a Consultas Oficiales")
+# --- ENLACES DE CONSULTA (ACTUALIZADOS) ---
+st.info("🔗 Accesos Rápidos a Consultas Oficiales y Técnicas")
 c1, c2, c3 = st.columns(3)
-with c1: st.link_button("🌐 RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
-with c2: st.link_button("🚦 SIMIT", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
-with c3: st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
-
-# Sugerencias de Plataformas Adicionales
-with st.expander("💡 Sugerencias de otras plataformas de consulta"):
-    st.markdown("""
-    * **📌 Antecedentes Judiciales (Policía Nacional):** Para verificar que el propietario no tenga requerimientos vigentes.
-    * **🚔 SIJIN / DIJIN:** Esencial para verificar si el vehículo tiene regrabaciones o historial de hurto.
-    * **🏛️ Secretaría de Hacienda (Bogotá/Local):** Para verificar el estado de cuenta de impuestos vehiculares.
-    * **⚡ Historial de Accidentes (OPAIN/Consorcios):** En algunas ciudades existen bases de datos locales sobre accidentes que no llegan a Fasecolda.
-    * **🛠️ VIN Decoder (NHTSA):** Para validar si el VIN coincide con el modelo, motor y país de origen real del fabricante.
-    """)
+with c1: 
+    st.link_button("🌐 RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
+    st.link_button("🚓 Antecedentes Policía", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
+with c2: 
+    st.link_button("🚦 SIMIT", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
+    st.link_button("🕵️ VIN Decoder (NHTSA)", "https://vpic.nhtsa.dot.gov/decoder/", use_container_width=True)
+with c3: 
+    st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
+    st.link_button("🏦 Impuestos Bogotá (SHD)", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
 
 st.divider()
 
@@ -103,6 +100,7 @@ with col_img:
             with st.spinner("Analizando imagen..."):
                 img_pil = Image.open(archivo).convert('RGB')
                 res = reader.readtext(np.array(img_pil), detail=0)
+                # LÍNEA CORREGIDA ABAJO:
                 txt_u = "".join(res).upper().replace(" ", "").replace("-", "")
                 
                 p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_u)
@@ -122,12 +120,14 @@ if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
         pdf = FPDF()
         pdf.add_page()
         
+        # Encabezado
         pdf.set_fill_color(0, 30, 77)
         pdf.rect(0, 0, 210, 35, 'F')
         pdf.set_text_color(255, 255, 255)
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS Y HALLAZGOS", ln=True, align='C')
         
+        # Datos Identificación
         pdf.set_text_color(0, 0, 0)
         pdf.ln(10)
         pdf.set_font("Arial", 'B', 11)
@@ -136,6 +136,7 @@ if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
         pdf.cell(95, 9, f"VENCIMIENTO SOAT: {f_soat}", border=1)
         pdf.cell(95, 9, f"VENCIMIENTO TECNO: {f_tecno}", border=1, ln=True)
         
+        # Siniestros
         pdf.ln(8)
         pdf.set_fill_color(240, 240, 240)
         pdf.set_font("Arial", 'B', 11)
@@ -145,28 +146,8 @@ if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
             pdf.cell(140, 8, f"Tipo: {r['tipo']}", border=1)
             pdf.cell(50, 8, r['valor'], border=1, ln=True)
         
+        # Multas (Sin mostrar total acumulado, solo listado)
         if multas_detectadas:
             pdf.ln(5)
             pdf.set_font("Arial", 'B', 11)
-            pdf.cell(190, 9, "RESUMEN DE COMPARENDOS (SIMIT)", ln=True, fill=True, border=1)
-            pdf.set_font("Arial", '', 10)
-            for m in multas_detectadas:
-                pdf.cell(140, 8, "Comparendo detectado", border=1)
-                pdf.cell(50, 8, m, border=1, ln=True)
-            
-        pdf.ln(10)
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(190, 10, "EVIDENCIA FOTOGRÁFICA REGISTRADA", ln=True)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            Image.open(archivo).convert('RGB').save(tmp.name)
-            pdf.image(tmp.name, x=10, w=180)
-            
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-            pdf.output(tmp_pdf.name)
-            with open(tmp_pdf.name, "rb") as f:
-                st.download_button("📥 DESCARGAR REPORTE FINAL", f, f"Reporte_{placa_f}.pdf")
-            os.unlink(tmp_pdf.name)
-            with st.spinner("Analizando imagen..."):
-                img_pil = Image.open(archivo).convert('RGB')
-                res = reader.readtext(np.array(img_pil), detail=0)
-                txt_u = "".join(res).upper().replace("
+            pdf.cell
