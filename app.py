@@ -11,15 +11,17 @@ st.set_page_config(page_title="Validador Técnico CDA Colombia", layout="wide")
 
 @st.cache_resource
 def load_ocr():
+    # Carga el motor de IA para detección de texto
     return easyocr.Reader(['es'], gpu=False)
 
 reader = load_ocr()
 
 def limpiar_monto(texto):
+    """Extrae números de una cadena para realizar operaciones matemáticas."""
     numeros = re.sub(r'[^\d]', '', texto)
     return int(numeros) if numeros else 0
 
-# --- BARRA LATERAL ---
+# --- BARRA LATERAL (MENÚ DE DATOS) ---
 st.sidebar.header("📋 Identificación Vehicular")
 
 if 'v_data' not in st.session_state:
@@ -52,9 +54,10 @@ with st.sidebar:
         total_siniestros += monto_num
         items_recla.append({"valor": v, "tipo": t})
 
+    # Mostrar Suma Total en el Menú Izquierdo
     if st.session_state.v_data["recla"]:
         st.divider()
-        st.markdown(f"### 💰 Total Siniestros\n**$ {total_siniestros:,.0f}**")
+        st.metric("💰 TOTAL SINIESTROS", f"$ {total_siniestros:,.0f}")
 
 # --- CUERPO PRINCIPAL ---
 st.title("🚗 Analizador Técnico de Historial - Colombia")
@@ -64,15 +67,15 @@ c1, c2, c3 = st.columns(3)
 with c1: 
     st.link_button("🌐 RUNT NACIONAL", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
     st.link_button("🚓 ANTECEDENTES POLICÍA", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
-    st.link_button("⚖️ RAMA JUDICIAL (Procesos)", "https://consultaprocesos.ramajudicial.gov.co/Consulta/NumeroRadicacion", use_container_width=True)
+    st.link_button("⚖️ RAMA JUDICIAL", "https://consultaprocesos.ramajudicial.gov.co/Consulta/NumeroRadicacion", use_container_width=True)
 with c2: 
     st.link_button("🚦 SIMIT (Multas)", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
     st.link_button("🏢 MOVILIDAD BOGOTÁ", "https://www.movilidadbogota.gov.co/web/SIMIT", use_container_width=True)
     st.link_button("📸 FOTOMULTAS MEDELLÍN", "https://www.medellin.gov.co/es/secretaria-de-movilidad/consultas-en-linea/", use_container_width=True)
 with c3: 
-    st.link_button("📊 FASECOLDA (Siniestros)", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
+    st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
     st.link_button("🏦 IMPUESTOS (Hacienda)", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
-    st.link_button("🛠️ ADUANAS (DIAN - Importación)", "https://www.dian.gov.co/aduanas/Paginas/Inicio.aspx", use_container_width=True)
+    st.link_button("🛠️ DIAN (Importación)", "https://www.dian.gov.co/aduanas/Paginas/Inicio.aspx", use_container_width=True)
 
 st.divider()
 
@@ -93,7 +96,4 @@ with col_info:
 
 with col_img:
     st.subheader("📸 Escaneo de Evidencia")
-    archivo = st.file_uploader("Subir foto de RUNT / Fasecolda", type=["jpg", "png", "jpeg"])
-    
-    if archivo:
-        if st
+    archivo = st.file_uploader("Sub
