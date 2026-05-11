@@ -6,17 +6,17 @@ import base64
 import numpy as np
 from PIL import Image, ImageOps
 import easyocr
+import os
 
 st.set_page_config(page_title="Validador Técnico CDA", layout="wide")
 
 @st.cache_resource
 def load_ocr():
-    # Motor de IA optimizado para lectura de caracteres técnicos
     return easyocr.Reader(['es'], gpu=False)
 
 reader = load_ocr()
 
-# --- BARRA LATERAL (GESTIÓN DE DATOS) ---
+# --- BARRA LATERAL ---
 st.sidebar.header("📋 Identificación Vehicular")
 
 if 'v_data' not in st.session_state:
@@ -40,15 +40,14 @@ with st.sidebar:
     for i, item in enumerate(st.session_state.v_data["recla"]):
         col1, col2 = st.columns(2)
         with col1:
-            v = st.text_input(f"Monto {i+1}", value=item['valor'], key=f_recla_v_{i})
+            v = st.text_input(f"Monto {i+1}", value=item['valor'], key=f"recla_v_{i}")
         with col2:
-            t = st.text_input(f"Tipo {i+1}", value=item['tipo'], key=f_recla_t_{i})
+            t = st.text_input(f"Tipo {i+1}", value=item['tipo'], key=f"recla_t_{i}")
         items_recla.append({"valor": v, "tipo": t})
 
 # --- CUERPO PRINCIPAL ---
 st.title("🚗 Analizador Técnico de Historial")
 
-# --- SECCIÓN DE LINKS (REINCORPORADA) ---
 st.info("🔗 Accesos Rápidos a Consultas Oficiales")
 c1, c2, c3 = st.columns(3)
 with c1: st.link_button("🌐 CONSULTA RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
@@ -61,40 +60,33 @@ col_info, col_img = st.columns([1.2, 1])
 
 with col_info:
     st.subheader("🚥 Historial SIMIT (Comparendos)")
-    txt_simit = st.text_area("Pega aquí el texto de la consulta del SIMIT:", height=150, placeholder="Copia y pega el detalle de multas aquí...")
+    txt_simit = st.text_area("Pega aquí el texto de la consulta del SIMIT:", height=150)
     
     multas_detectadas = []
     if txt_simit:
-        # Extraer montos de dinero del texto pegado
         montos = re.findall(r'\$\s?[\d\.,]{5,}', txt_simit)
         if montos:
-            with st.expander("👁️ Ver Multas Extraídas del Texto", expanded=True):
+            with st.expander("👁️ Ver Multas Extraídas", expanded=True):
                 for m in list(set(montos)):
                     st.write(f"• {m}")
                     multas_detectadas.append(m)
 
 with col_img:
     st.subheader("📸 Escaneo de Evidencia")
-    archivo = st.file_uploader("Subir foto de RUNT / Fasecolda / Chasis", type=["jpg", "png", "jpeg"])
+    archivo = st.file_uploader("Subir foto de RUNT / Fasecolda", type=["jpg", "png", "jpeg"])
     
     if archivo:
         if st.button("🔍 INICIAR ESCANEO DE IA"):
             with st.spinner("Analizando imagen..."):
                 img_pil = Image.open(archivo).convert('RGB')
-                # OCR sobre la imagen original
                 res = reader.readtext(np.array(img_pil), detail=0)
-                txt_completo = "".join(res).upper().replace(" ", "").replace("-", "")
+                txt_u = "".join(res).upper().replace(" ", "").replace("-", "")
                 
-                # Búsqueda de Placa (AAA111 o AAA11A)
-                p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_completo)
-                # Búsqueda de VIN (17 caracteres estándar ISO)
-                v_match = re.search(r'[A-HJ-NPR-Z0-9]{17}', txt_completo)
+                p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_u)
+                v_match = re.search(r'[A-HJ-NPR-Z0-9]{17}', txt_u)
                 
                 if p_match: st.session_state.v_data["placa"] = p_match.group()
                 if v_match: st.session_state.v_data["vin"] = v_match.group()
-                
-                if not p_match and not v_match:
-                    st.warning("No se detectaron datos. Intente con una foto más cercana o con mejor luz.")
                 st.rerun()
         st.image(archivo, use_container_width=True)
 
@@ -102,19 +94,19 @@ with col_img:
 st.divider()
 if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
     if not archivo:
-        st.error("Es obligatorio subir una imagen de evidencia.")
+        st.error("Adjunte la imagen de evidencia.")
     else:
         pdf = FPDF()
         pdf.add_page()
         
-        # Encabezado Estilo CDA
+        # Encabezado
         pdf.set_fill_color(0, 30, 77)
         pdf.rect(0, 0, 210, 35, 'F')
         pdf.set_text_color(255, 255, 255)
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS Y HALLAZGOS", ln=True, align='C')
         
-        # Información del Vehículo
+        # Datos Identificación
         pdf.set_text_color(0, 0, 0)
         pdf.ln(10)
         pdf.set_font("Arial", 'B', 11)
@@ -123,7 +115,7 @@ if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
         pdf.cell(95, 9, f"VENCIMIENTO SOAT: {f_soat}", border=1)
         pdf.cell(95, 9, f"VENCIMIENTO TECNO: {f_tecno}", border=1, ln=True)
         
-        # Detalle Siniestros
+        # Siniestros
         pdf.ln(8)
         pdf.set_fill_color(240, 240, 240)
         pdf.set_font("Arial", 'B', 11)
@@ -133,16 +125,26 @@ if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
             pdf.cell(140, 8, f"Tipo: {r['tipo']}", border=1)
             pdf.cell(50, 8, r['valor'], border=1, ln=True)
         
-        # Detalle Multas
+        # Multas
         if multas_detectadas:
             pdf.ln(5)
             pdf.set_font("Arial", 'B', 11)
             pdf.cell(190, 9, "RESUMEN DE COMPARENDOS (SIMIT)", ln=True, fill=True, border=1)
             pdf.set_font("Arial", '', 10)
             for m in multas_detectadas:
-                pdf.cell(140, 8, "Comparendo / Multa detectada", border=1)
+                pdf.cell(140, 8, "Comparendo detectado", border=1)
                 pdf.cell(50, 8, m, border=1, ln=True)
             
-        # Imagen de Evidencia
+        # Imagen
         pdf.ln(10)
-        pdf.set_font("
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(190, 10, "EVIDENCIA FOTOGRÁFICA REGISTRADA", ln=True)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            Image.open(archivo).convert('RGB').save(tmp.name)
+            pdf.image(tmp.name, x=10, w=180)
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            pdf.output(tmp_pdf.name)
+            with open(tmp_pdf.name, "rb") as f:
+                st.download_button("📥 DESCARGAR REPORTE FINAL", f, f"Reporte_{placa_f}.pdf")
+            os.unlink(tmp_pdf.name)
