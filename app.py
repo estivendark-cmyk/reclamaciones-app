@@ -2,174 +2,137 @@ import streamlit as st
 from fpdf import FPDF
 import tempfile
 import re
-import numpy as np
+import google.generativeai as genai
 from PIL import Image
-import easyocr
 import os
 
-st.set_page_config(page_title="Validador Técnico CDA Colombia", layout="wide")
+# CONFIGURACIÓN DE GEMINI
+# Reemplaza "TU_API_KEY_AQUÍ" con la clave que sacaste de AI Studio
+API_KEY = "AIzaSyBsBYSlQ-alP6716JKKii-yXNRXXs8efyc" 
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-@st.cache_resource
-def load_ocr():
-    # Carga el motor de IA para detección de texto
-    return easyocr.Reader(['es'], gpu=False)
-
-reader = load_ocr()
+st.set_page_config(page_title="Validador CDA con Gemini AI", layout="wide")
 
 def limpiar_monto(texto):
-    """Extrae números de una cadena para realizar operaciones matemáticas."""
-    numeros = re.sub(r'[^\d]', '', texto)
+    numeros = re.sub(r'[^\d]', '', str(texto))
     return int(numeros) if numeros else 0
 
-# --- BARRA LATERAL (MENÚ DE DATOS) ---
-st.sidebar.header("📋 Identificación Vehicular")
+# --- BARRA LATERAL ---
+st.sidebar.header("📋 Datos del Vehículo")
 
 if 'v_data' not in st.session_state:
     st.session_state.v_data = {"placa": "", "vin": "", "recla": []}
 
 with st.sidebar:
-    placa_f = st.text_input("📍 Placa Detectada", value=st.session_state.v_data["placa"])
+    placa_f = st.text_input("📍 Placa", value=st.session_state.v_data["placa"])
     vin_f = st.text_input("🆔 VIN / Chasis", value=st.session_state.v_data["vin"])
     
     st.divider()
-    st.subheader("🗓️ Fechas Técnicas")
+    st.subheader("🗓️ Vencimientos")
     f_soat = st.date_input("Vencimiento SOAT")
-    f_tecno = st.date_input("Vencimiento Tecnomecánica")
+    f_tecno = st.date_input("Vencimiento Tecno")
     
     st.divider()
-    st.subheader("🛡️ Reporte de Siniestros")
+    st.subheader("🛡️ Siniestros")
     if st.button("➕ Añadir Hallazgo"):
         st.session_state.v_data["recla"].append({"valor": "0", "tipo": "PPD"})
     
-    items_recla = []
     total_siniestros = 0
     for i, item in enumerate(st.session_state.v_data["recla"]):
-        col1, col2 = st.columns(2)
-        with col1:
-            v = st.text_input(f"Monto {i+1}", value=item['valor'], key=f"recla_v_{i}")
-        with col2:
-            t = st.text_input(f"Tipo {i+1}", value=item['tipo'], key=f"recla_t_{i}")
-        
-        monto_num = limpiar_monto(v)
-        total_siniestros += monto_num
-        items_recla.append({"valor": v, "tipo": t})
+        c1, c2 = st.columns(2)
+        with c1: v = st.text_input(f"Monto {i+1}", value=item['valor'], key=f"v_{i}")
+        with c2: t = st.text_input(f"Tipo {i+1}", value=item['tipo'], key=f"t_{i}")
+        total_siniestros += limpiar_monto(v)
+        st.session_state.v_data["recla"][i] = {"valor": v, "tipo": t}
 
-    # Mostrar Suma Total en el Menú Izquierdo
     if st.session_state.v_data["recla"]:
         st.divider()
         st.metric("💰 TOTAL SINIESTROS", f"$ {total_siniestros:,.0f}")
 
 # --- CUERPO PRINCIPAL ---
-st.title("🚗 Analizador Técnico de Historial - Colombia")
+st.title("🚀 Analizador Técnico con Gemini AI")
 
-st.info("🔗 Consultas Oficiales en Colombia")
-c1, c2, c3 = st.columns(3)
-with c1: 
-    st.link_button("🌐 RUNT NACIONAL", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
-    st.link_button("🚓 ANTECEDENTES POLICÍA", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
-    st.link_button("⚖️ RAMA JUDICIAL", "https://consultaprocesos.ramajudicial.gov.co/Consulta/NumeroRadicacion", use_container_width=True)
-with c2: 
-    st.link_button("🚦 SIMIT (Multas)", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
+st.info("🔗 Consultas Rápidas Colombia")
+col_links = st.columns(3)
+with col_links[0]:
+    st.link_button("🌐 RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
+    st.link_button("🚓 POLICÍA", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
+with col_links[1]:
+    st.link_button("🚦 SIMIT", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
     st.link_button("🏢 MOVILIDAD BOGOTÁ", "https://www.movilidadbogota.gov.co/web/SIMIT", use_container_width=True)
-    st.link_button("📸 FOTOMULTAS MEDELLÍN", "https://www.medellin.gov.co/es/secretaria-de-movilidad/consultas-en-linea/", use_container_width=True)
-with c3: 
+with col_links[2]:
     st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
-    st.link_button("🏦 IMPUESTOS (Hacienda)", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
-    st.link_button("🛠️ DIAN (Importación)", "https://www.dian.gov.co/aduanas/Paginas/Inicio.aspx", use_container_width=True)
+    st.link_button("🏦 HACIENDA (Impuestos)", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
 
 st.divider()
 
-col_info, col_img = st.columns([1.2, 1])
+c_info, c_img = st.columns([1.2, 1])
 
-with col_info:
-    st.subheader("🚥 Historial SIMIT (Comparendos)")
-    txt_simit = st.text_area("Pega aquí el texto de la consulta del SIMIT:", height=150)
+with c_info:
+    st.subheader("🚥 Pegado de Datos SIMIT")
+    txt_simit = st.text_area("Pega el historial de multas aquí:", height=150)
+    multas = re.findall(r'\$\s?[\d\.,]{5,}', txt_simit) if txt_simit else []
+    if multas:
+        with st.expander("👁️ Multas Detectadas"):
+            for m in list(set(multas)): st.write(f"• {m}")
+
+with c_img:
+    st.subheader("📸 Escaneo Inteligente")
+    archivo = st.file_uploader("Subir foto de evidencia", type=["jpg", "png", "jpeg"])
     
-    multas_detectadas = []
-    if txt_simit:
-        montos = re.findall(r'\$\s?[\d\.,]{5,}', txt_simit)
-        if montos:
-            with st.expander("👁️ Ver Multas Extraídas", expanded=True):
-                for m in list(set(montos)):
-                    st.write(f"• {m}")
-                    multas_detectadas.append(m)
+    if archivo and st.button("🔍 ESCANEAR CON GEMINI"):
+        with st.spinner("Gemini analizando imagen..."):
+            img = Image.open(archivo)
+            # Prompt para Gemini
+            prompt = "Extrae la PLACA (formato colombiano) y el VIN (17 caracteres) de esta imagen. Responde solo en este formato: PLACA: XXX000, VIN: 1234567890ABCDEFG"
+            
+            response = model.generate_content([prompt, img])
+            res_text = response.text.upper()
+            
+            # Extraer con Regex de la respuesta de Gemini
+            p = re.search(r'PLACA:\s?([A-Z0-9]+)', res_text)
+            v = re.search(r'VIN:\s?([A-Z0-9]+)', res_text)
+            
+            if p: st.session_state.v_data["placa"] = p.group(1)
+            if v: st.session_state.v_data["vin"] = v.group(1)
+            st.rerun()
+    if archivo: st.image(archivo, use_container_width=True)
 
-with col_img:
-    st.subheader("📸 Escaneo de Evidencia")
-    archivo = st.file_uploader("Subir foto de RUNT / Fasecolda", type=["jpg", "png", "jpeg"])
-    
-    if archivo:
-        if st.button("🔍 INICIAR ESCANEO DE IA"):
-            with st.spinner("Analizando imagen..."):
-                img_pil = Image.open(archivo).convert('RGB')
-                res = reader.readtext(np.array(img_pil), detail=0)
-                # Limpieza de texto para detectar códigos sin espacios
-                txt_u = "".join(res).upper().replace(" ", "").replace("-", "")
-                
-                p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_u)
-                v_match = re.search(r'[A-HJ-NPR-Z0-9]{17}', txt_u)
-                
-                if p_match: st.session_state.v_data["placa"] = p_match.group()
-                if v_match: st.session_state.v_data["vin"] = v_match.group()
-                st.rerun()
-        st.image(archivo, use_container_width=True)
-
-# --- GENERAR PDF ---
-st.divider()
-if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
+# --- PDF ---
+if st.button("📥 GENERAR REPORTE PDF"):
     if not archivo:
-        st.error("Es necesario subir la imagen de evidencia fotográfica.")
+        st.error("Sube una imagen primero.")
     else:
         pdf = FPDF()
         pdf.add_page()
+        pdf.set_fill_color(0, 30, 77); pdf.rect(0, 0, 210, 35, 'F')
+        pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 16)
+        pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS", ln=True, align='C')
         
-        # Estética del PDF
-        pdf.set_fill_color(0, 30, 77)
-        pdf.rect(0, 0, 210, 35, 'F')
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS Y HALLAZGOS", ln=True, align='C')
-        
-        # Datos del vehículo
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(10)
-        pdf.set_font("Arial", 'B', 11)
+        pdf.set_text_color(0, 0, 0); pdf.ln(10); pdf.set_font("Arial", 'B', 11)
         pdf.cell(95, 9, f"PLACA: {placa_f}", border=1)
         pdf.cell(95, 9, f"VIN: {vin_f}", border=1, ln=True)
         pdf.cell(95, 9, f"VENCIMIENTO SOAT: {f_soat}", border=1)
         pdf.cell(95, 9, f"VENCIMIENTO TECNO: {f_tecno}", border=1, ln=True)
         
-        # Tabla de Siniestros
-        pdf.ln(8)
-        pdf.set_fill_color(240, 240, 240)
-        pdf.set_font("Arial", 'B', 11)
-        pdf.cell(190, 9, "DETALLE DE RECLAMACIONES / SINIESTROS", ln=True, fill=True, border=1)
+        pdf.ln(5); pdf.set_fill_color(240, 240, 240); pdf.cell(190, 9, "RECLAMACIONES", ln=True, fill=True, border=1)
         pdf.set_font("Arial", '', 10)
-        for r in items_recla:
-            pdf.cell(140, 8, f"Tipo: {r['tipo']}", border=1)
-            pdf.cell(50, 8, r['valor'], border=1, ln=True)
-        
-        # Tabla de Multas
-        if multas_detectadas:
-            pdf.ln(5)
-            pdf.set_font("Arial", 'B', 11)
-            pdf.cell(190, 9, "RESUMEN DE COMPARENDOS (SIMIT)", ln=True, fill=True, border=1)
-            pdf.set_font("Arial", '', 10)
-            for m in multas_detectadas:
-                pdf.cell(140, 8, "Comparendo detectado", border=1)
-                pdf.cell(50, 8, m, border=1, ln=True)
+        for r in st.session_state.v_data["recla"]:
+            pdf.cell(140, 8, r['tipo'], border=1); pdf.cell(50, 8, r['valor'], border=1, ln=True)
             
-        # Imagen de Evidencia al Final
+        if multas:
+            pdf.ln(5); pdf.set_font("Arial", 'B', 11); pdf.cell(190, 9, "COMPARENDOS", ln=True, fill=True, border=1)
+            pdf.set_font("Arial", '', 10)
+            for m in list(set(multas)):
+                pdf.cell(140, 8, "Multa detectada", border=1); pdf.cell(50, 8, m, border=1, ln=True)
+
         pdf.ln(10)
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(190, 10, "EVIDENCIA FOTOGRÁFICA REGISTRADA", ln=True)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            img_final = Image.open(archivo).convert('RGB')
-            img_final.save(tmp.name)
+            Image.open(archivo).convert('RGB').save(tmp.name)
             pdf.image(tmp.name, x=10, w=180)
             
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
             pdf.output(tmp_pdf.name)
             with open(tmp_pdf.name, "rb") as f:
-                st.download_button("📥 DESCARGAR REPORTE FINAL", f, f"Reporte_{placa_f}.pdf")
-            os.unlink(tmp_pdf.name)
+                st.download_button("📥 DESCARGAR PDF", f, f"Reporte_{placa_f}.pdf")
