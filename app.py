@@ -96,4 +96,80 @@ with col_info:
 
 with col_img:
     st.subheader("📸 Escaneo de Evidencia")
-    archivo = st.file_uploader("Sub
+    archivo = st.file_uploader("Subir foto de RUNT / Fasecolda", type=["jpg", "png", "jpeg"])
+    
+    if archivo:
+        if st.button("🔍 INICIAR ESCANEO DE IA"):
+            with st.spinner("Analizando imagen..."):
+                img_pil = Image.open(archivo).convert('RGB')
+                res = reader.readtext(np.array(img_pil), detail=0)
+                # Limpieza de texto para detectar códigos sin espacios
+                txt_u = "".join(res).upper().replace(" ", "").replace("-", "")
+                
+                p_match = re.search(r'[A-Z]{3}[0-9]{3}|[A-Z]{3}[0-9]{2}[A-Z]', txt_u)
+                v_match = re.search(r'[A-HJ-NPR-Z0-9]{17}', txt_u)
+                
+                if p_match: st.session_state.v_data["placa"] = p_match.group()
+                if v_match: st.session_state.v_data["vin"] = v_match.group()
+                st.rerun()
+        st.image(archivo, use_container_width=True)
+
+# --- GENERAR PDF ---
+st.divider()
+if st.button("📥 GENERAR REPORTE DE SINIESTROS PDF"):
+    if not archivo:
+        st.error("Es necesario subir la imagen de evidencia fotográfica.")
+    else:
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Estética del PDF
+        pdf.set_fill_color(0, 30, 77)
+        pdf.rect(0, 0, 210, 35, 'F')
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(190, 15, "REPORTE TÉCNICO DE SINIESTROS Y HALLAZGOS", ln=True, align='C')
+        
+        # Datos del vehículo
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(10)
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(95, 9, f"PLACA: {placa_f}", border=1)
+        pdf.cell(95, 9, f"VIN: {vin_f}", border=1, ln=True)
+        pdf.cell(95, 9, f"VENCIMIENTO SOAT: {f_soat}", border=1)
+        pdf.cell(95, 9, f"VENCIMIENTO TECNO: {f_tecno}", border=1, ln=True)
+        
+        # Tabla de Siniestros
+        pdf.ln(8)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(190, 9, "DETALLE DE RECLAMACIONES / SINIESTROS", ln=True, fill=True, border=1)
+        pdf.set_font("Arial", '', 10)
+        for r in items_recla:
+            pdf.cell(140, 8, f"Tipo: {r['tipo']}", border=1)
+            pdf.cell(50, 8, r['valor'], border=1, ln=True)
+        
+        # Tabla de Multas
+        if multas_detectadas:
+            pdf.ln(5)
+            pdf.set_font("Arial", 'B', 11)
+            pdf.cell(190, 9, "RESUMEN DE COMPARENDOS (SIMIT)", ln=True, fill=True, border=1)
+            pdf.set_font("Arial", '', 10)
+            for m in multas_detectadas:
+                pdf.cell(140, 8, "Comparendo detectado", border=1)
+                pdf.cell(50, 8, m, border=1, ln=True)
+            
+        # Imagen de Evidencia al Final
+        pdf.ln(10)
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(190, 10, "EVIDENCIA FOTOGRÁFICA REGISTRADA", ln=True)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            img_final = Image.open(archivo).convert('RGB')
+            img_final.save(tmp.name)
+            pdf.image(tmp.name, x=10, w=180)
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            pdf.output(tmp_pdf.name)
+            with open(tmp_pdf.name, "rb") as f:
+                st.download_button("📥 DESCARGAR REPORTE FINAL", f, f"Reporte_{placa_f}.pdf")
+            os.unlink(tmp_pdf.name)
