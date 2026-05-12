@@ -1,8 +1,4 @@
-easyocr
-opencv-python-headless
 streamlit
-weasyprint
-pillow
-numpy
 fpdf2
-google-generativeai
+google-generativeai>=0.5.0
+pillow
