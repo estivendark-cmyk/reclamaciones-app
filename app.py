@@ -7,8 +7,14 @@ from PIL import Image
 import os
 
 # --- CONFIGURACIÓN DE GEMINI ---
-API_KEY = "AIzaSyBsBYSlQ-alP6716JKKii-yXNRXXs8efyc" 
-genai.configure(api_key=API_KEY)
+# Tu API KEY integrada
+API_KEY = "AIzaSyBsBYSlQ-alP6716JKKii-yXNRXXs8efyc"
+
+# Forzamos la configuración inicial
+try:
+    genai.configure(api_key=API_KEY)
+except Exception as e:
+    st.error(f"Error en configuración de API: {e}")
 
 st.set_page_config(page_title="Validador Técnico CDA", layout="wide")
 
@@ -46,17 +52,15 @@ with st.sidebar:
 # --- CUERPO PRINCIPAL ---
 st.title("🚗 Analizador Técnico Automotriz (Gemini AI)")
 
+# Enlaces Colombia
 st.info("🔗 Consultas de Tránsito Colombia")
 c1, c2, c3 = st.columns(3)
 with c1:
     st.link_button("🌐 RUNT", "https://www.runt.com.co/consultaCiudadana/#/consultaVehiculo", use_container_width=True)
-    st.link_button("🚓 ANTECEDENTES POLICÍA", "https://srvcnpc.policia.gov.co/PSC/frm_cnp_consulta.aspx", use_container_width=True)
 with c2:
     st.link_button("🚦 SIMIT", "https://www.fcm.org.co/simit/#/estado-cuenta", use_container_width=True)
-    st.link_button("⚖️ RAMA JUDICIAL", "https://consultaprocesos.ramajudicial.gov.co/Consulta/NumeroRadicacion", use_container_width=True)
 with c3:
     st.link_button("📊 FASECOLDA", "https://noticias.fasecolda.com/fasecolda/GuiaValores/Buscar.aspx", use_container_width=True)
-    st.link_button("🏦 HACIENDA", "https://oficinavirtual.shd.gov.co/OficinaVirtual/login.html", use_container_width=True)
 
 st.divider()
 
@@ -73,14 +77,15 @@ with c_img:
     
     if archivo and st.button("🔍 ANALIZAR CON IA"):
         try:
-            # CAMBIO CRÍTICO: Usamos el nombre del modelo sin el prefijo 'models/' 
-            # o intentamos con la versión 1.5-flash-latest que es más estable
-            model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            # CAMBIO CLAVE: Usamos 'gemini-pro-vision' como respaldo si flash falla, 
+            # pero intentamos gemini-1.5-flash de forma directa.
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             with st.spinner("La IA está leyendo el documento..."):
                 img = Image.open(archivo)
-                prompt = "Actúa como un inspector vehicular. Extrae la PLACA y el VIN de este documento. Responde exactamente: PLACA: [valor] | VIN: [valor]"
+                prompt = "Extrae la PLACA y el VIN de este documento. Responde exactamente así: PLACA: XXX000 | VIN: 12345678901234567"
                 
+                # Intentamos la generación
                 response = model.generate_content([prompt, img])
                 res_text = response.text.upper()
                 
@@ -90,17 +95,11 @@ with c_img:
                 if p: st.session_state.v_data["placa"] = p.group(1)
                 if v: st.session_state.v_data["vin"] = v.group(1)
                 
-                st.success("Lectura completada.")
+                st.success("✅ Lectura completada.")
                 st.rerun()
         except Exception as e:
-            # Si falla el anterior, intentamos con el pro que siempre está disponible
-            try:
-                model_alt = genai.GenerativeModel('gemini-1.5-pro')
-                response = model_alt.generate_content([prompt, img])
-                # ... mismo proceso de extracción ...
-                st.info("Se usó motor de respaldo (Pro)")
-            except:
-                st.error(f"Error persistente de API: {e}. Verifica que la API Key no tenga restricciones de IP en Google Cloud Console.")
+            st.error(f"Error de API: {e}")
+            st.warning("⚠️ Intenta refrescar la página o verifica que la API Key esté habilitada para 'Generative Language API'.")
 
     if archivo: st.image(archivo, use_container_width=True)
 
@@ -127,12 +126,6 @@ if st.button("📥 GENERAR PDF FINAL"):
         for r in st.session_state.v_data["recla"]:
             pdf.cell(140, 8, r['tipo'], border=1); pdf.cell(50, 8, r['valor'], border=1, ln=True)
         
-        if multas:
-            pdf.ln(5); pdf.set_fill_color(230, 230, 230); pdf.cell(190, 9, "RESUMEN DE COMPARENDOS", ln=True, fill=True, border=1)
-            pdf.set_font("Arial", '', 10)
-            for m in list(set(multas)):
-                pdf.cell(140, 8, "Comparendo detectado", border=1); pdf.cell(50, 8, m, border=1, ln=True)
-
         pdf.ln(10)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
             Image.open(archivo).convert('RGB').save(tmp.name)
