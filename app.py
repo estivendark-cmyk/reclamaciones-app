@@ -73,3 +73,72 @@ with c_img:
     
     if archivo and st.button("🔍 ANALIZAR CON IA"):
         try:
+            # Usamos el modelo flash de Gemini para velocidad y precisión
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            with st.spinner("La IA está leyendo el documento..."):
+                img = Image.open(archivo)
+                prompt = "Extrae la PLACA y el VIN de este documento vehicular. Responde solo: PLACA: XXX000 | VIN: 12345678901234567"
+                
+                response = model.generate_content([prompt, img])
+                res_text = response.text.upper()
+                
+                # Regex para encontrar los datos en la respuesta de la IA
+                p = re.search(r'PLACA:\s?([A-Z0-9]{6})', res_text)
+                v = re.search(r'VIN:\s?([A-Z0-9]{17})', res_text)
+                
+                if p: st.session_state.v_data["placa"] = p.group(1)
+                if v: st.session_state.v_data["vin"] = v.group(1)
+                
+                st.success("Lectura completada.")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Error técnico: {e}")
+
+    if archivo: st.image(archivo, use_container_width=True)
+
+# --- GENERACIÓN DE REPORTE ---
+st.divider()
+if st.button("📥 GENERAR PDF FINAL"):
+    if not archivo:
+        st.error("Adjunta una imagen para el reporte.")
+    else:
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Diseño de cabecera
+        pdf.set_fill_color(0, 30, 77); pdf.rect(0, 0, 210, 35, 'F')
+        pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 16)
+        pdf.cell(190, 15, "REPORTE TÉCNICO DE INSPECCIÓN", ln=True, align='C')
+        
+        # Bloque de datos
+        pdf.set_text_color(0, 0, 0); pdf.ln(10); pdf.set_font("Arial", 'B', 11)
+        pdf.cell(95, 9, f"PLACA: {placa_f}", border=1)
+        pdf.cell(95, 9, f"VIN: {vin_f}", border=1, ln=True)
+        pdf.cell(95, 9, f"SOAT: {f_soat}", border=1)
+        pdf.cell(95, 9, f"TECNO: {f_tecno}", border=1, ln=True)
+        
+        # Tabla de hallazgos
+        pdf.ln(5); pdf.set_fill_color(230, 230, 230); pdf.cell(190, 9, "RECLAMACIONES DE ASEGURADORA", ln=True, fill=True, border=1)
+        pdf.set_font("Arial", '', 10)
+        for r in st.session_state.v_data["recla"]:
+            pdf.cell(140, 8, r['tipo'], border=1); pdf.cell(50, 8, r['valor'], border=1, ln=True)
+        
+        # Tabla de comparendos
+        if multas:
+            pdf.ln(5); pdf.set_fill_color(230, 230, 230); pdf.cell(190, 9, "RESUMEN DE COMPARENDOS", ln=True, fill=True, border=1)
+            pdf.set_font("Arial", '', 10)
+            for m in list(set(multas)):
+                pdf.cell(140, 8, "Comparendo detectado", border=1); pdf.cell(50, 8, m, border=1, ln=True)
+
+        # Foto de evidencia
+        pdf.ln(10)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            Image.open(archivo).convert('RGB').save(tmp.name)
+            pdf.image(tmp.name, x=10, w=180)
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            pdf.output(tmp_pdf.name)
+            with open(tmp_pdf.name, "rb") as f:
+                st.download_button("📥 DESCARGAR DOCUMENTO PDF", f, f"Inspeccion_{placa_f}.pdf")
+            os.unlink(tmp_pdf.name)
